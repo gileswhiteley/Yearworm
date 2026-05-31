@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Yearworm</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0e1116;
+    color: #f4f6fb;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Tap surface fills the screen */
+  #stage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    cursor: pointer;
+  }
+
+  /* ---- QR side ---- */
+  .qr-card {
+    background: #fff;
+    border-radius: 24px;
+    padding: 22px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.5);
+  }
+  #qr { width: 260px; height: 260px; }
+  #qr img, #qr canvas { display: block; width: 260px !important; height: 260px !important; }
+
+  .scan-hint {
+    margin-top: 26px;
+    font-size: 1.05rem;
+    color: #aeb6c6;
+    line-height: 1.5;
+  }
+  .scan-hint b { color: #f4f6fb; }
+
+  /* ---- Year side ---- */
+  .year {
+    font-size: clamp(5rem, 30vw, 11rem);
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1;
+    background: linear-gradient(180deg,#fff,#9fb4ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .song {
+    margin-top: 18px;
+    font-size: 1.35rem;
+    font-weight: 600;
+  }
+  .artist { color: #aeb6c6; font-weight: 500; }
+  .next-hint { margin-top: 30px; color: #7f8aa3; font-size: 1rem; }
+
+  /* ---- top bar ---- */
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    font-size: .9rem;
+    color: #7f8aa3;
+  }
+  .bar button, .bar select {
+    background: #1b2230;
+    color: #aeb6c6;
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: .85rem;
+    font-weight: 600;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .bar .right { display: flex; gap: 8px; align-items: center; }
+  .hidden { display: none !important; }
+  /* loading / empty message */
+  .msg { color: #aeb6c6; font-size: 1.1rem; line-height: 1.5; }
+
+  /* ---- start screen ---- */
+  .brand {
+    font-size: clamp(3rem, 16vw, 6rem);
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1;
+    background: linear-gradient(180deg,#fff,#9fb4ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .tagline { margin-top: 14px; color: #aeb6c6; font-size: 1.15rem; }
+  .start-btn {
+    margin-top: 40px;
+    background: linear-gradient(180deg,#6c8bff,#4f6cff);
+    color: #fff;
+    border: 0;
+    border-radius: 999px;
+    padding: 16px 44px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    box-shadow: 0 12px 30px rgba(79,108,255,.4);
+  }
+  .start-sub { margin-top: 22px; color: #7f8aa3; font-size: .95rem; }
+</style>
+</head>
+<body>
+  <div class="bar hidden" id="bar">
+    <span id="count">—</span>
+    <div class="right">
+      <select id="decade" aria-label="Decade">
+        <option value="all">All years</option>
+        <option value="1950">50s</option>
+        <option value="1960">60s</option>
+        <option value="1970">70s</option>
+        <option value="1980">80s</option>
+        <option value="1990">90s</option>
+        <option value="2000">00s</option>
+        <option value="2010">10s</option>
+        <option value="2020">20s</option>
+      </select>
+      <button id="shuffle">Shuffle</button>
+    </div>
+  </div>
+
+  <div id="stage">
+    <!-- QR view -->
+    <div id="qrView">
+      <div class="qr-card"><div id="qr"></div></div>
+      <div class="scan-hint">
+        <b>Scan, then press play in Spotify</b><br />
+        Tap this screen to reveal the year
+      </div>
+    </div>
+
+    <!-- Year view -->
+    <div id="yearView" class="hidden">
+      <div class="year" id="yearNum">1984</div>
+      <div class="song"><span id="songTitle"></span></div>
+      <div class="artist" id="songArtist"></div>
+      <div class="next-hint">tap for the next song &rarr;</div>
+    </div>
+
+    <!-- Loading / empty message -->
+    <div id="msgView" class="hidden"><div class="msg" id="msgText">Loading songs…</div></div>
+
+    <!-- Start screen -->
+    <div id="startView" class="hidden">
+      <div class="brand">Yearworm</div>
+      <div class="tagline">Hear it. Guess the year.</div>
+      <button class="start-btn" id="startBtn">Start</button>
+      <div class="start-sub" id="startSub"></div>
+    </div>
+  </div>
+
+  <!-- QR generator -->
+  <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a/qrcode.min.js"></script>
+  <script>
+  /* =========================================================
+     The deck loads from songs.json (built from the UK #1s).
+     Each entry is { title, artist, year, id } where id is the
+     Spotify track id, so the QR opens that exact track.
+     ========================================================= */
+  let ALL = [];      // every song loaded
+  let deck = [];     // current filtered + shuffled deck
+  let pos = 0;
+  let showingYear = false;
+
+  const qrView    = document.getElementById('qrView');
+  const yearView  = document.getElementById('yearView');
+  const msgView   = document.getElementById('msgView');
+  const msgText   = document.getElementById('msgText');
+  const qrBox     = document.getElementById('qr');
+  const yearNum   = document.getElementById('yearNum');
+  const songTitle = document.getElementById('songTitle');
+  const songArtist= document.getElementById('songArtist');
+  const countEl   = document.getElementById('count');
+  const decadeSel = document.getElementById('decade');
+  const bar       = document.getElementById('bar');
+  const startView = document.getElementById('startView');
+  const startSub  = document.getElementById('startSub');
+
+  function shuffle(a){
+    for (let i = a.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Primary artist, lower-cased, for keeping the same act from clustering.
+  function artistKey(s){
+    return (s.artist || "").toLowerCase()
+      .split(/\s+(?:feat\.?|ft\.?|featuring|with|&|x|and)\s+|,/)[0].trim();
+  }
+
+  // Shuffle, then re-lay the deck so the same artist stays at least `gap`
+  // cards apart (e.g. two Spice Girls #1s never cluster). Each step takes the
+  // artist with the most songs left that isn't still "cooling down"; if a
+  // decade is too dense to separate fully, it just picks the next best.
+  function spacedShuffle(a, gap){
+    shuffle(a);
+    const buckets = new Map();        // artist -> [songs] (already random order)
+    for (const s of a){
+      const k = artistKey(s);
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(s);
+    }
+    const lastIdx = new Map();
+    const out = [];
+    for (let i = 0; i < a.length; i++){
+      let best = null, bestCount = -1;
+      for (const [k, items] of buckets){
+        if (!items.length) continue;
+        const li = lastIdx.has(k) ? lastIdx.get(k) : -Infinity;
+        const eligible = i - li > gap;
+        // prefer eligible artists; only fall back to a cooling-down one if
+        // nothing else is available (deck too dense for this spacing).
+        const rank = (eligible ? 1e6 : 0) + items.length;
+        if (rank > bestCount){ best = k; bestCount = rank; }
+      }
+      out.push(buckets.get(best).pop());
+      lastIdx.set(best, i);
+    }
+    for (let i = 0; i < a.length; i++) a[i] = out[i];
+    return a;
+  }
+
+  function spotifyUrl(song){
+    if (song.id) return "https://open.spotify.com/track/" + song.id;
+    const q = encodeURIComponent(song.title + " " + song.artist);
+    return "https://open.spotify.com/search/" + q;
+  }
+
+  function renderQR(song){
+    qrBox.innerHTML = "";
+    const url = spotifyUrl(song);
+    if (window.QRCode){
+      new QRCode(qrBox, { text: url, width: 260, height: 260,
+        colorDark: "#000000", colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M });
+    } else {
+      qrBox.innerHTML = '<a style="color:#000;word-break:break-all" href="'+url+'">'+url+'</a>';
+    }
+  }
+
+  function show(view){
+    qrView.classList.toggle('hidden', view !== 'qr');
+    yearView.classList.toggle('hidden', view !== 'year');
+    msgView.classList.toggle('hidden', view !== 'msg');
+    startView.classList.toggle('hidden', view !== 'start');
+    bar.classList.toggle('hidden', view === 'start');
+  }
+
+  function showQR(){
+    showingYear = false;
+    renderQR(deck[pos]);
+    show('qr');
+    countEl.textContent = (pos + 1) + " / " + deck.length;
+  }
+
+  function showYear(){
+    showingYear = true;
+    const song = deck[pos];
+    yearNum.textContent    = song.year;
+    songTitle.textContent  = song.title;
+    songArtist.textContent = song.artist;
+    show('year');
+  }
+
+  function nextSong(){
+    pos = pos + 1;
+    if (pos >= deck.length){        // exhausted the deck -> reshuffle
+      const lastKey = artistKey(deck[deck.length - 1]);
+      spacedShuffle(deck, 5);
+      // don't let the same act straddle the wrap (last card -> new first card)
+      if (deck.length > 1 && artistKey(deck[0]) === lastKey){
+        const k = deck.findIndex(s => artistKey(s) !== lastKey);
+        if (k > 0){ [deck[0], deck[k]] = [deck[k], deck[0]]; }
+      }
+      pos = 0;
+    }
+    showQR();
+  }
+
+  function tap(){
+    if (!deck.length) return;
+    if (showingYear) nextSong();
+    else showYear();
+  }
+
+  function buildDeck(){
+    const d = decadeSel.value;
+    deck = (d === 'all')
+      ? ALL.slice()
+      : ALL.filter(s => s.year >= +d && s.year < +d + 10);
+    spacedShuffle(deck, 5);
+    pos = 0;
+    if (!deck.length){
+      msgText.textContent = "No songs in that decade.";
+      show('msg');
+      countEl.textContent = "0 / 0";
+    } else {
+      showQR();
+    }
+  }
+
+  document.getElementById('stage').addEventListener('click', tap);
+  document.getElementById('shuffle').addEventListener('click', function(e){
+    e.stopPropagation();
+    buildDeck();
+  });
+  document.getElementById('startBtn').addEventListener('click', function(e){
+    e.stopPropagation();
+    buildDeck();
+  });
+  decadeSel.addEventListener('change', buildDeck);
+
+  show('msg');
+  fetch('songs.json')
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(data => {
+      ALL = data.filter(s => s.id);   // only songs we have a playable id for
+      if (!ALL.length){ msgText.textContent = "songs.json has no playable songs yet."; return; }
+      startSub.textContent = ALL.length.toLocaleString() + " songs · UK #1 singles";
+      show('start');
+    })
+    .catch(() => { msgText.textContent = "Couldn't load songs.json."; });
+  </script>
+</body>
+</html>
