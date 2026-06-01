@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Yearworm — scoring prototype</title>
+<style>
+  :root { color-scheme: dark; --accent: #6d8cff; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0e1116;
+    color: #f4f6fb;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  #stage {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    cursor: pointer;
+  }
+  /* each view fills at least the viewport and centres its own content; when a
+     view is taller than the screen it scrolls from the TOP (no clipped header) */
+  #stage > div {
+    width: 100%;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+
+  .play-head { margin-bottom: 32px; }
+  .brand.sm { font-size: clamp(2.4rem, 11vw, 3.6rem); }
+  .tagline.sm { margin-top: 8px; font-size: 1.05rem; }
+
+  /* turn banner (scoring) */
+  .turn-banner { font-size: 1.3rem; font-weight: 800; margin-bottom: 26px; }
+  .turn-banner b { color: var(--accent); }
+
+  /* ============ QR card ============ */
+  .qr-card { background: #fff; border-radius: 24px; padding: 22px; box-shadow: 0 18px 50px rgba(0,0,0,.5); display: inline-block; }
+  #qr { width: 260px; height: 260px; }
+  #qr img, #qr canvas { display: block; width: 260px !important; height: 260px !important; }
+  .scan-hint { margin-top: 26px; font-size: 1.05rem; color: #aeb6c6; line-height: 1.5; }
+  .scan-hint b { color: #f4f6fb; }
+
+  /* ============ snippet player ============ */
+  .play-window {
+    width: 320px; max-width: 92vw; height: 80px; margin: 0 auto;
+    overflow: hidden; border-radius: 14px; background: #181818;
+    box-shadow: 0 16px 44px -10px var(--accent); position: relative;
+  }
+  .play-window iframe { border: 0; display: block; width: 320px; height: 80px; }
+  .play-window .cover {
+    position: absolute; top: 0; left: 0; bottom: 0; width: 240px;
+    background: #14181f; display: flex; align-items: center; gap: 12px;
+    padding: 0 18px; pointer-events: none; color: #cdd6e8; font-weight: 700; font-size: 1rem;
+  }
+  .play-window .cover .disc {
+    width: 40px; height: 40px; border-radius: 8px; flex: 0 0 auto;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center; color: #0a0e14; font-size: 1.2rem;
+  }
+  .play-window.loading { display: flex; align-items: center; justify-content: center; color: #7f8aa3; font-size: .8rem; box-shadow: none; background: #1b2230; }
+  .play-window.loading .cover { display: none; }
+
+  .snippet-meta { margin-top: 26px; min-height: 1.2em; color: #aeb6c6; font-size: 1.05rem; }
+  .snippet-meta b { color: var(--accent); }
+
+  .reveal-btn { margin-top: 34px; background: #1b2230; color: #cdd6e8; border: 0; border-radius: 999px; padding: 14px 32px; font-size: 1.05rem; font-weight: 700; }
+
+  /* ---- Year side ---- */
+  .year {
+    font-size: clamp(5rem, 30vw, 11rem); font-weight: 800; letter-spacing: -2px; line-height: 1;
+    background: linear-gradient(180deg,#fff,#9fb4ff); -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .song { margin-top: 18px; font-size: 1.35rem; font-weight: 600; }
+  .artist { color: #aeb6c6; font-weight: 500; }
+  .next-hint { margin-top: 30px; color: #7f8aa3; font-size: 1rem; }
+
+  /* ---- adjudication (scoring) ---- */
+  .adj-q { font-size: 1.2rem; margin-top: 30px; }
+  .adj-q b { color: var(--accent); }
+  .adj-actions { margin-top: 22px; display: flex; gap: 44px; justify-content: center; }
+  .adj-action { background: none; border: 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 11px; }
+  .adj-circle { width: 78px; height: 78px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.3rem; font-weight: 800; line-height: 1; transition: transform .12s; }
+  .adj-action:active .adj-circle { transform: scale(.9); }
+  .adj-circle.yes { background: rgba(52,217,119,.16); color: #34d977; border: 2px solid #34d977; }
+  .adj-circle.no  { background: rgba(255,107,107,.14); color: #ff6b6b; border: 2px solid #ff6b6b; }
+  .adj-label { font-size: .98rem; font-weight: 700; color: #cdd6e8; }
+
+  /* ---- top bar ---- */
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-size: .9rem; color: #7f8aa3; }
+  .bar button, .bar select { background: #1b2230; color: #aeb6c6; border: 0; border-radius: 999px; padding: 8px 12px; font-size: .82rem; font-weight: 600; -webkit-appearance: none; appearance: none; }
+  .bar .left, .bar .right { display: flex; gap: 6px; align-items: center; }
+  #count { flex: 0 0 auto; white-space: nowrap; }
+  #startOver { background: #2a2030; color: #ffb4b4; font-weight: 700; }
+
+  .seg { display: inline-flex; background: #1b2230; border-radius: 999px; padding: 2px; }
+  .seg button { background: transparent; color: #7f8aa3; padding: 6px 11px; border: 0; border-radius: 999px; font-size: .8rem; font-weight: 700; -webkit-appearance: none; appearance: none; }
+  .seg button.active { background: var(--accent); color: #0a0e14; }
+
+  /* ---- scoreboard (coloured squares) ---- */
+  .scorebar { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 14px 12px; }
+  .score-target { font-size: .8rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #8d97ab; }
+  /* squares grow to fill the row; JS sets --cols so they wrap to a 2nd line at 4+ */
+  .score-squares { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%; max-width: 640px; margin: 0 auto; }
+  .psquare {
+    --pc: #888;
+    flex: 1 1 calc((100% - (var(--cols, 2) - 1) * 10px) / var(--cols, 2));
+    max-width: calc((100% - (var(--cols, 2) - 1) * 10px) / var(--cols, 2));
+    min-height: 86px; border-radius: 18px; padding: 12px 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    background: #161b24; border: 2px solid transparent; transition: transform .15s, box-shadow .15s;
+  }
+  .psquare.active { border-color: var(--pc); box-shadow: 0 0 22px -3px var(--pc); transform: translateY(-2px); }
+  .psquare .sc { font-size: clamp(1.7rem, 8vw, 2.6rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .psquare .nm { font-size: .82rem; font-weight: 700; color: #aeb6c6; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .psquare.active .nm { color: #f4f6fb; }
+  /* winner board keeps its squares a sensible size, doesn't stretch full-width */
+  .winner-board .psquare { flex: 0 0 92px; max-width: 92px; min-height: 78px; }
+
+  .hidden { display: none !important; }
+  .msg { color: #aeb6c6; font-size: 1.1rem; line-height: 1.5; }
+
+  /* ---- start / setup / winner ---- */
+  .brand { font-size: clamp(3rem, 16vw, 6rem); font-weight: 800; letter-spacing: -2px; line-height: 1; background: linear-gradient(180deg,#fff,#9fb4ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tagline { margin-top: 14px; color: #aeb6c6; font-size: 1.15rem; }
+  .start-btn { margin-top: 40px; background: var(--accent); color: #0a0e14; border: 0; border-radius: 999px; padding: 16px 44px; font-size: 1.2rem; font-weight: 700; box-shadow: 0 12px 30px -6px var(--accent); }
+  .start-sub { margin-top: 22px; color: #7f8aa3; font-size: .95rem; line-height: 1.5; }
+  .link-btn { margin-top: 18px; background: transparent; color: #7f8aa3; border: 0; font-size: .98rem; font-weight: 600; text-decoration: underline; }
+
+  #setupView { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .setup-brand { font-size: clamp(3rem, 17vw, 5.6rem); margin-top: 4px; }
+  .setup-lead { color: #aeb6c6; font-size: 1.15rem; margin-top: 8px; margin-bottom: 26px; }
+  .setup-section-label { color: #7f8aa3; font-size: .82rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; margin: 14px 0 10px; }
+  .decade-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; width: min(360px, 90vw); }
+  .dchip { background: #161b24; border: 2px solid #283042; color: #aeb6c6; border-radius: 999px; padding: 9px 15px; font-size: .92rem; font-weight: 700; -webkit-appearance: none; appearance: none; }
+  .dchip.active { background: var(--accent); border-color: var(--accent); color: #0a0e14; }
+  .lock-note { color: #7f8aa3; font-size: .82rem; margin-top: 8px; }
+  #playerLock { margin-top: 0; margin-bottom: 4px; color: #d8b25a; }
+  #decadeLock { margin-bottom: 4px; }
+  .count-row { display: flex; align-items: center; gap: 14px; justify-content: center; margin-bottom: 22px; }
+  .count-row button { width: 46px; height: 46px; border-radius: 50%; border: 0; background: #1b2230; color: #f4f6fb; font-size: 1.6rem; font-weight: 700; line-height: 1; }
+  #pCount { font-size: 1.9rem; font-weight: 800; min-width: 1.4em; }
+  .count-label { color: #7f8aa3; }
+  .name-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; width: min(320px, 86vw); }
+  .name-list input { background: #161b24; border: 2px solid #283042; color: #f4f6fb; border-radius: 12px; padding: 12px 14px; font-size: 1rem; font-weight: 700; text-align: center; transition: border-color .15s, background .15s; }
+  .name-list input:focus { outline: none; }
+  .target-row { display: flex; align-items: center; gap: 10px; justify-content: center; color: #aeb6c6; font-size: 1.05rem; flex-wrap: wrap; margin-top: 8px; }
+  .target-input { width: 92px; background: #161b24; border: 2px solid #283042; color: #f4f6fb; border-radius: 12px; padding: 11px 12px; font-size: 1.3rem; font-weight: 800; text-align: center; -moz-appearance: textfield; }
+  .target-input::-webkit-outer-spin-button, .target-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .target-input:focus { outline: none; border-color: var(--accent); }
+  .pill-btn { margin-top: 4px; margin-bottom: 8px; background: #1b2230; color: #cdd6e8; border: 1px solid #283042; border-radius: 999px; padding: 12px 26px; font-size: 1rem; font-weight: 700; }
+
+  /* ---- winner (go to town) ---- */
+  .trophy { font-size: clamp(4rem, 22vw, 7rem); line-height: 1; margin-bottom: 4px; filter: drop-shadow(0 10px 26px var(--accent)); animation: trophyIn .7s cubic-bezier(.2,.8,.2,1.5) both, trophyWiggle 2.4s ease-in-out .7s infinite; }
+  @keyframes trophyIn { 0% { transform: scale(0) rotate(-45deg); opacity: 0; } 60% { transform: scale(1.35) rotate(10deg); } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+  @keyframes trophyWiggle { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+  .winner-kicker { color: var(--accent); font-size: 1.05rem; letter-spacing: .22em; text-transform: uppercase; font-weight: 800; margin-bottom: 8px; animation: winpop .5s ease both; }
+  .winner-name { font-size: clamp(2.8rem, 15vw, 5.4rem); font-weight: 900; letter-spacing: -2px; line-height: 1; background: linear-gradient(180deg,#fff,var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 6px 30px var(--accent)); animation: winpop .6s cubic-bezier(.2,.8,.2,1.3) both, winfloat 2.6s ease-in-out .6s infinite; }
+  @keyframes winpop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes winfloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  .winner-sub { margin-top: 12px; color: #aeb6c6; font-size: 1.2rem; }
+  .winner-board { margin-top: 28px; }
+
+  /* ---- practice gate (free solo limit) ---- */
+  #gateView { display: flex; flex-direction: column; align-items: center; }
+  .gate-icon { font-size: clamp(3rem, 16vw, 4.6rem); line-height: 1; margin-bottom: 14px; }
+  .gate-title { font-size: clamp(1.8rem, 8vw, 2.6rem); font-weight: 900; letter-spacing: -1px; }
+  .gate-sub { margin-top: 14px; color: #aeb6c6; font-size: 1.1rem; line-height: 1.5; }
+  .count-row button.locked { opacity: .4; }
+
+  /* ---- post-turn score toast (big, exciting, own background) ---- */
+  .toast { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(6,8,12,.72); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+  .toast.hidden { display: none !important; }
+  .toast-card { --tc: #6d8cff; text-align: center; background: var(--tc); color: #0a0e14; border-radius: 30px; padding: 30px 48px; box-shadow: 0 24px 70px -12px var(--tc); animation: toastburst 1.3s cubic-bezier(.18,.7,.3,1) forwards; }
+  .toast-name { font-size: 2.8rem; font-weight: 900; letter-spacing: -1px; }
+  .toast-score { margin-top: 4px; font-size: 1.5rem; font-weight: 800; color: rgba(0,0,0,.62); }
+  @keyframes toastburst {
+    0%   { transform: scale(.2);  opacity: 0; }
+    14%  { transform: scale(1.28); opacity: 1; }
+    30%  { transform: scale(1); }
+    72%  { transform: scale(1);  opacity: 1; }
+    100% { transform: scale(1.7); opacity: 0; }
+  }
+
+  /* ---- confetti ---- */
+  #confetti { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
+  #confetti.hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="bar hidden" id="bar">
+    <div class="left">
+      <button id="startOver" class="hidden" aria-label="Restart">&#8634; Restart</button>
+      <span id="count">—</span>
+    </div>
+    <div class="right">
+      <button id="shuffle">Shuffle</button>
+    </div>
+  </div>
+
+  <div class="scorebar hidden" id="scorebar">
+    <div class="score-target" id="scoreTarget"></div>
+    <div class="score-squares" id="scoreSquares"></div>
+  </div>
+
+  <div id="stage">
+    <div id="playView">
+      <div class="turn-banner hidden" id="turnBanner"></div>
+
+      <div class="play-head" id="playHead">
+        <div class="brand sm">Yearworm</div>
+        <div class="tagline sm">Hear it. Guess the year.</div>
+      </div>
+
+      <div id="qrBlock" class="hidden">
+        <div class="qr-card"><div id="qr"></div></div>
+        <div class="scan-hint">
+          <b>Scan, then press play in Spotify</b><br />
+          Tap this screen to reveal the year
+        </div>
+      </div>
+
+      <div id="snippetBlock">
+        <div class="play-window loading" id="playWindow">loading…</div>
+        <div class="snippet-meta" id="snippetMeta">tap <b>&#9654;</b> to hear the snippet</div>
+        <button class="reveal-btn" id="revealBtn">Reveal year &rarr;</button>
+      </div>
+    </div>
+
+    <!-- Year view (shared) -->
+    <div id="yearView" class="hidden">
+      <div class="year" id="yearNum">1984</div>
+      <div class="song"><span id="songTitle"></span></div>
+      <div class="artist" id="songArtist"></div>
+      <div class="next-hint" id="nextHint">tap for the next song &rarr;</div>
+      <div id="adjudicate" class="hidden">
+        <div class="adj-q">Did <b id="adjName">Player 1</b> get the year?</div>
+        <div class="adj-actions">
+          <button class="adj-action" id="gotIt"><span class="adj-circle yes">&#10003;</span><span class="adj-label">Got it</span></button>
+          <button class="adj-action" id="missed"><span class="adj-circle no">&#10007;</span><span class="adj-label">Missed</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="msgView" class="hidden"><div class="msg" id="msgText">Loading songs…</div></div>
+
+    <!-- Start screen -->
+    <div id="startView" class="hidden">
+      <div class="brand">Yearworm</div>
+      <div class="tagline">Hear it. Guess the year.</div>
+      <button class="start-btn" id="startBtn">New game</button>
+      <button class="link-btn hidden" id="resumeBtn">Resume game</button>
+      <div class="start-sub" id="startSub"></div>
+    </div>
+
+    <!-- Setup screen -->
+    <div id="setupView" class="hidden">
+      <div class="brand setup-brand">Yearworm</div>
+      <div class="setup-lead">Let&rsquo;s get you set up</div>
+
+      <div class="count-row">
+        <button id="pMinus" aria-label="Fewer players">&minus;</button>
+        <span id="pCount">2</span>
+        <button id="pPlus" aria-label="More players">+</button>
+        <span class="count-label">players</span>
+      </div>
+      <div id="nameList" class="name-list"></div>
+      <div class="lock-note hidden" id="playerLock">&#x2726; More than 2 players is a Tier&nbsp;1 unlock</div>
+
+      <div class="setup-section-label">Which eras?</div>
+      <div class="decade-row" id="decadeRow">
+        <button class="dchip active" data-dec="all">All years</button>
+        <button class="dchip" data-dec="1950">50s</button>
+        <button class="dchip" data-dec="1960">60s</button>
+        <button class="dchip" data-dec="1970">70s</button>
+        <button class="dchip" data-dec="1980">80s</button>
+        <button class="dchip" data-dec="1990">90s</button>
+        <button class="dchip" data-dec="2000">00s</button>
+        <button class="dchip" data-dec="2010">10s</button>
+        <button class="dchip" data-dec="2020">20s</button>
+      </div>
+      <div class="lock-note" id="decadeLock">&#x2726; Picking eras is a Tier&nbsp;1 unlock &mdash; free for now</div>
+
+      <div class="target-row">
+        <span>First to</span>
+        <input id="targetInput" class="target-input" type="number" inputmode="numeric" min="1" max="999" value="10" aria-label="Target score to win" />
+        <span>wins</span>
+      </div>
+      <button class="pill-btn" id="practiseBtn">Just practising — play solo</button>
+
+      <button class="start-btn" id="beginBtn">Start game</button>
+    </div>
+
+    <!-- Winner screen -->
+    <div id="winnerView" class="hidden">
+      <div class="trophy" id="trophy">&#127942;</div>
+      <div class="winner-kicker">Champion</div>
+      <div class="winner-name" id="winName">Player 1</div>
+      <div class="winner-sub" id="winSub"></div>
+      <div class="winner-board score-squares" id="winBoard"></div>
+      <button class="start-btn" id="playAgain">Play again</button>
+      <button class="link-btn" id="newGame">New game</button>
+    </div>
+
+    <!-- Practice gate (solo free limit reached) -->
+    <div id="gateView" class="hidden">
+      <div class="gate-icon">&#x1F512;</div>
+      <div class="gate-title">That&rsquo;s your free round!</div>
+      <div class="gate-sub" id="gateSub">You&rsquo;ve had your practice goes.<br>Sign up to keep playing &mdash; coming soon.</div>
+      <button class="start-btn" id="gateSignup">Sign up</button>
+      <button class="link-btn" id="gateBack">Back to start</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden">
+    <div class="toast-card">
+      <div class="toast-name" id="toastName"></div>
+      <div class="toast-score" id="toastScore"></div>
+    </div>
+  </div>
+  <canvas id="confetti" class="hidden"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a/qrcode.min.js"></script>
+  <script>
+  /* =========================================================
+     Yearworm — SCORING PROTOTYPE.
+     Same game as index.html, plus a hot-seat (pass-and-play)
+     scoring layer:
+       • Setup: number of players, names, target score to win.
+       • Each turn = ONE player, a fresh song (Hitster-style):
+         play snippet -> reveal year -> "Did <player> get it?"
+         Yes = +1, No = nothing -> next player, next song.
+       • First to the target score wins.
+       • Scores persist in localStorage so a refresh won't wipe them.
+     game = null  -> plain practice (no scoring).
+
+     SINGLE-DEVICE: the app now leans into one device (phone/tablet/PC) — the
+     Solo/QR toggle is removed from the UI. The QR code + renderQR()/spotifyUrl()
+     are kept in the file (mode==='qr' path) in case we resurrect a 2nd-device
+     mode later, but nothing surfaces it now.
+
+     FREE-TIER GATES (prototype — see ROADMAP):
+       • >2 players  -> Tier 1 unlock (setup caps free at 2, shows a lock note).
+       • picking eras -> Tier 1 unlock (selectable now, free; note shown).
+       • solo practice -> limited to PRACTICE_LIMIT goes, then a sign-up gate.
+
+     DEV NOTE (TODO): this layout is tuned for phones (where it'll mostly
+     be used). On a desktop/Mac it looks lost in the middle of a big screen.
+     Needs a desktop treatment that fills the viewport — bigger type, the
+     board using the width, not a tiny phone column floating in black.
+     ========================================================= */
+  let ALL = [], deck = [], pos = 0, showingYear = false;
+  // Single-device by default. QR kept in code for possible resurrection, not surfaced.
+  let mode = 'snippet';
+
+  // scoring state (null = practice / no scoring)
+  let game = null;
+  // setup scratch state
+  let playerCount = 2, targetScore = 10, names = ['Player 1', 'Player 2'];
+  let selDecades = new Set();        // empty = all years
+  let practicePlays = 0;             // solo/practice songs played this session
+  const MINP = 2, MAXP = 8;
+  const ALPHA = true;               // Alpha build: paid gates unlocked for testing
+  const FREE_PLAYERS = 2;           // free tier would cap at 2 players (more = Tier 1)
+  const PLAYER_CAP = ALPHA ? MAXP : FREE_PLAYERS;   // Alpha unlocks the full house
+  const PRACTICE_LIMIT = 10;        // free solo goes before the sign-up gate
+
+  // how many score squares per row, so 4+ players wrap to a second line
+  function colsFor(n){
+    if (n <= 3) return n;            // 1-3 on one line
+    if (n === 4) return 2;           // 2 x 2
+    if (n <= 6) return 3;            // 3 per row
+    return 4;                        // 7-8: 4 per row
+  }
+
+  const playView   = document.getElementById('playView');
+  const playHead   = document.getElementById('playHead');
+  const qrBlock    = document.getElementById('qrBlock');
+  const snippetBlock = document.getElementById('snippetBlock');
+  const qrBox      = document.getElementById('qr');
+  const yearView   = document.getElementById('yearView');
+  const msgView    = document.getElementById('msgView');
+  const msgText    = document.getElementById('msgText');
+  const startView  = document.getElementById('startView');
+  const setupView  = document.getElementById('setupView');
+  const winnerView = document.getElementById('winnerView');
+  const startSub   = document.getElementById('startSub');
+  const yearNum    = document.getElementById('yearNum');
+  const songTitle  = document.getElementById('songTitle');
+  const songArtist = document.getElementById('songArtist');
+  const countEl    = document.getElementById('count');
+  const decadeRow  = document.getElementById('decadeRow');
+  const playerLock = document.getElementById('playerLock');
+  const bar        = document.getElementById('bar');
+  const revealBtn  = document.getElementById('revealBtn');
+  const playWindow = document.getElementById('playWindow');
+  const gateView   = document.getElementById('gateView');
+  const scorebar   = document.getElementById('scorebar');
+  const scoreTarget = document.getElementById('scoreTarget');
+  const scoreSquares = document.getElementById('scoreSquares');
+  const startOver  = document.getElementById('startOver');
+  const turnBanner = document.getElementById('turnBanner');
+  const adjudicate = document.getElementById('adjudicate');
+  const adjName    = document.getElementById('adjName');
+  const nextHint   = document.getElementById('nextHint');
+  const resumeBtn  = document.getElementById('resumeBtn');
+  const pCount     = document.getElementById('pCount');
+  const nameList   = document.getElementById('nameList');
+  const winName    = document.getElementById('winName');
+  const winSub     = document.getElementById('winSub');
+  const winBoard   = document.getElementById('winBoard');
+  const targetInput = document.getElementById('targetInput');
+  const toast      = document.getElementById('toast');
+  const toastCard  = toast.querySelector('.toast-card');
+  const toastName  = document.getElementById('toastName');
+  const toastScore = document.getElementById('toastScore');
+
+  // one distinct colour per player (deliberately NOT Spotify green)
+  const PCOL = ['#f5b301','#4d9dff','#ff5d8f','#b98aff','#ff8a3d','#2dd4bf','#facc15','#38bdf8'];
+  const DEFAULT_ACCENT = '#6d8cff';
+  function pcolour(i){ return PCOL[i % PCOL.length]; }
+  function hexa(hex, a){ const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n>>16)&255) + ',' + ((n>>8)&255) + ',' + (n&255) + ',' + a + ')'; }
+  function setAccent(c){ document.body.style.setProperty('--accent', c || DEFAULT_ACCENT); }
+
+  function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  /* ---------- Solo: Spotify snippet player ---------- */
+  function mountPlayer(id){
+    playWindow.classList.remove('loading');
+    playWindow.innerHTML =
+      '<iframe src="https://open.spotify.com/embed/track/' + id + '?utm_source=generator" '
+      + 'width="320" height="80" frameborder="0" loading="eager" '
+      + 'allow="autoplay; encrypted-media; clipboard-write"></iframe>'
+      + '<div class="cover"><span class="disc">&#9834;</span><span>Mystery snippet</span></div>';
+  }
+  function stopPlayer(){ playWindow.innerHTML = '<span>loading…</span>'; playWindow.classList.add('loading'); }
+
+  /* ---------- QR ---------- */
+  function spotifyUrl(song){
+    if (song.id) return "https://open.spotify.com/track/" + song.id;
+    const q = encodeURIComponent(song.title + " " + song.artist);
+    return "https://open.spotify.com/search/" + q;
+  }
+  function renderQR(song){
+    qrBox.innerHTML = "";
+    const url = spotifyUrl(song);
+    if (window.QRCode){
+      new QRCode(qrBox, { text: url, width: 260, height: 260, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+    } else {
+      qrBox.innerHTML = '<a style="color:#000;word-break:break-all" href="'+url+'">'+url+'</a>';
+    }
+  }
+
+  /* ---------- deck logic ---------- */
+  function shuffle(a){
+    for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function artistKey(s){
+    return (s.artist || "").toLowerCase().split(/\s+(?:feat\.?|ft\.?|featuring|with|&|x|and)\s+|,/)[0].trim();
+  }
+  function spacedShuffle(a, gap){
+    shuffle(a);
+    const buckets = new Map();
+    for (const s of a){ const k = artistKey(s); if (!buckets.has(k)) buckets.set(k, []); buckets.get(k).push(s); }
+    const lastIdx = new Map();
+    const out = [];
+    for (let i = 0; i < a.length; i++){
+      let best = null, bestCount = -1;
+      for (const [k, items] of buckets){
+        if (!items.length) continue;
+        const li = lastIdx.has(k) ? lastIdx.get(k) : -Infinity;
+        const eligible = i - li > gap;
+        const rank = (eligible ? 1e6 : 0) + items.length;
+        if (rank > bestCount){ best = k; bestCount = rank; }
+      }
+      out.push(buckets.get(best).pop());
+      lastIdx.set(best, i);
+    }
+    for (let i = 0; i < a.length; i++) a[i] = out[i];
+    return a;
+  }
+
+  /* ---------- views ---------- */
+  function show(view){
+    playView.classList.toggle('hidden', view !== 'play');
+    yearView.classList.toggle('hidden', view !== 'year');
+    msgView.classList.toggle('hidden', view !== 'msg');
+    startView.classList.toggle('hidden', view !== 'start');
+    setupView.classList.toggle('hidden', view !== 'setup');
+    winnerView.classList.toggle('hidden', view !== 'winner');
+    gateView.classList.toggle('hidden', view !== 'gate');
+    const chrome = (view === 'play' || view === 'year' || view === 'msg');
+    bar.classList.toggle('hidden', !chrome);
+    const inPlay = (view === 'play' || view === 'year');
+    const showScore = !!game && inPlay;
+    scorebar.classList.toggle('hidden', !showScore);
+    // Restart is the quit option on every in-game page (scored OR practice)
+    startOver.classList.toggle('hidden', !inPlay);
+    countEl.classList.toggle('hidden', !!game);                // practice shows the deck position
+    if (view === 'start' || view === 'setup' || view === 'gate') setAccent(DEFAULT_ACCENT);
+  }
+
+  function squareHtml(p, i, active){
+    const c = pcolour(i);
+    return '<div class="psquare' + (active ? ' active' : '') + '" style="--pc:' + c + ';background:' + hexa(c, active ? 0.30 : 0.15) + (active ? ';border-color:' + c : '') + '">' +
+      '<span class="sc" style="color:' + c + '">' + p.score + '</span>' +
+      '<span class="nm">' + escapeHtml(p.name) + '</span></div>';
+  }
+  function renderScorebar(){
+    if (!game){ scoreSquares.innerHTML = ''; scoreTarget.textContent = ''; return; }
+    scoreTarget.textContent = 'First to ' + game.target;
+    scoreSquares.style.setProperty('--cols', colsFor(game.players.length));  // --cols inherits to .psquare
+    scoreSquares.innerHTML = game.players.map((p, i) => squareHtml(p, i, i === game.turn)).join('');
+  }
+
+  function renderPlay(){
+    showingYear = false;
+    const song = deck[pos];
+    if (mode === 'qr'){
+      playHead.classList.add('hidden');
+      snippetBlock.classList.add('hidden');
+      qrBlock.classList.remove('hidden');
+      renderQR(song);
+    } else {
+      playHead.classList.toggle('hidden', !!game);   // scoring shows the turn banner instead of the logo
+      qrBlock.classList.add('hidden');
+      snippetBlock.classList.remove('hidden');
+      mountPlayer(song.id);
+    }
+    if (game){
+      setAccent(pcolour(game.turn));
+      turnBanner.classList.remove('hidden');
+      turnBanner.innerHTML = "<b>" + escapeHtml(game.players[game.turn].name) + "</b>’s turn";
+    } else {
+      setAccent(DEFAULT_ACCENT);
+      turnBanner.classList.add('hidden');
+    }
+    renderScorebar();
+    show('play');
+    if (!game) countEl.textContent = (pos + 1) + " / " + deck.length;
+  }
+
+  function showYear(){
+    showingYear = true;
+    stopPlayer();
+    const song = deck[pos];
+    yearNum.textContent    = song.year;
+    songTitle.textContent  = song.title;
+    songArtist.textContent = song.artist;
+    if (game){
+      setAccent(pcolour(game.turn));
+      adjName.textContent = game.players[game.turn].name;
+      adjudicate.classList.remove('hidden');
+      nextHint.classList.add('hidden');
+    } else {
+      adjudicate.classList.add('hidden');
+      nextHint.classList.remove('hidden');
+    }
+    renderScorebar();
+    show('year');
+  }
+
+  function nextSong(){
+    pos = pos + 1;
+    if (pos >= deck.length){
+      const lastKey = artistKey(deck[deck.length - 1]);
+      spacedShuffle(deck, 5);
+      if (deck.length > 1 && artistKey(deck[0]) === lastKey){
+        const k = deck.findIndex(s => artistKey(s) !== lastKey);
+        if (k > 0){ [deck[0], deck[k]] = [deck[k], deck[0]]; }
+      }
+      pos = 0;
+    }
+    renderPlay();
+  }
+
+  function inSelectedDecades(s){
+    if (selDecades.size === 0) return true;            // empty = all years
+    for (const d of selDecades){ if (s.year >= d && s.year < d + 10) return true; }
+    return false;
+  }
+  /* ---------- practice (free solo) ---------- */
+  function practiceAdvance(){
+    // a "go" = a song the solo player has seen; gate after the free limit
+    if (practicePlays >= PRACTICE_LIMIT){ showGate(); return; }
+    practicePlays++;
+    nextSong();
+  }
+  function showGate(){
+    stopPlayer();
+    document.getElementById('gateSub').innerHTML =
+      "You&rsquo;ve had your " + PRACTICE_LIMIT + " free goes.<br>Sign up to keep playing &mdash; coming soon.";
+    show('gate');
+  }
+
+  function buildDeck(){
+    deck = ALL.filter(inSelectedDecades);
+    spacedShuffle(deck, 5);
+    pos = 0;
+    if (!deck.length){
+      msgText.textContent = "No songs in those eras.";
+      show('msg');
+      countEl.textContent = "0 / 0";
+    } else {
+      renderPlay();
+    }
+  }
+
+  /* ---------- scoring ---------- */
+  function saveGame(){ try { if (game) localStorage.setItem('yw_game', JSON.stringify(game)); } catch(e){} }
+  function clearGame(){ try { localStorage.removeItem('yw_game'); } catch(e){} }
+  function loadGame(){
+    try {
+      const s = localStorage.getItem('yw_game');
+      if (!s) return null;
+      const g = JSON.parse(s);
+      if (g && Array.isArray(g.players) && g.players.length >= 2 && g.target) return g;
+    } catch(e){}
+    return null;
+  }
+
+  function resolve(correct){
+    if (!game) return;
+    const idx = game.turn;
+    const p = game.players[idx];
+    if (correct) p.score++;
+    saveGame();
+    if (p.score >= game.target){ endGame(idx); return; }
+    showScoreToast(idx, correct, function(){
+      game.turn = (game.turn + 1) % game.players.length;
+      saveGame();
+      nextSong();
+    });
+  }
+
+  function showScoreToast(idx, correct, done){
+    const p = game.players[idx], c = pcolour(idx);
+    toastCard.style.setProperty('--tc', c);
+    toastName.textContent = p.name;
+    toastScore.textContent = (correct ? '+1 · ' : '') + p.score + (p.score === 1 ? ' point' : ' points');
+    toast.classList.remove('hidden');
+    // restart the burst animation each time
+    toastCard.style.animation = 'none';
+    void toastCard.offsetWidth;
+    toastCard.style.animation = '';
+    setTimeout(function(){ toast.classList.add('hidden'); done(); }, 1300);
+  }
+
+  function endGame(winnerIdx){
+    const winner = game.players[winnerIdx];
+    clearGame();
+    setAccent(pcolour(winnerIdx));
+    winName.textContent = winner.name;
+    winSub.textContent = "reached " + winner.score + " — game over";
+    const ranked = game.players.map((p,i)=>({p,i})).sort((a,b)=>b.p.score - a.p.score);
+    winBoard.innerHTML = ranked.map(o => squareHtml(o.p, o.i, o.i === winnerIdx)).join('');
+    show('winner');
+    launchConfetti();
+  }
+
+  /* ---------- confetti ---------- */
+  let confettiRAF = null;
+  function launchConfetti(){
+    const cv = document.getElementById('confetti'), ctx = cv.getContext('2d');
+    const W = cv.width = window.innerWidth, H = cv.height = window.innerHeight;
+    cv.classList.remove('hidden');
+    const parts = [];
+    for (let i = 0; i < 150; i++){
+      parts.push({ x: Math.random()*W, y: Math.random()*-H, w: 6+Math.random()*6, h: 8+Math.random()*8,
+        c: PCOL[i % PCOL.length], vy: 2+Math.random()*3, vx: -1+Math.random()*2,
+        rot: Math.random()*6.28, vr: -0.2+Math.random()*0.4 });
+    }
+    const start = performance.now();
+    function frame(t){
+      ctx.clearRect(0, 0, W, H);
+      for (const p of parts){
+        p.y += p.vy; p.x += p.vx; p.rot += p.vr;
+        if (p.y > H + 20){ p.y = -20; p.x = Math.random()*W; }
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.c; ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h); ctx.restore();
+      }
+      if (t - start < 6000){ confettiRAF = requestAnimationFrame(frame); } else { stopConfetti(); }
+    }
+    confettiRAF = requestAnimationFrame(frame);
+  }
+  function stopConfetti(){
+    if (confettiRAF) cancelAnimationFrame(confettiRAF);
+    confettiRAF = null;
+    const cv = document.getElementById('confetti');
+    cv.classList.add('hidden');
+    cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+  }
+
+  /* ---------- setup ---------- */
+  function readNames(){
+    const inputs = nameList.querySelectorAll('input');
+    inputs.forEach((inp, i) => { names[i] = inp.value.trim() || ('Player ' + (i + 1)); });
+  }
+  function tintInput(inp, i){
+    const c = pcolour(i), filled = inp.value.trim().length > 0;
+    inp.style.borderColor = filled ? c : '#283042';
+    inp.style.background  = filled ? hexa(c, 0.12) : '#161b24';
+    inp.style.caretColor  = c;
+  }
+  function renderNames(){
+    while (names.length < playerCount) names.push('Player ' + (names.length + 1));
+    names.length = playerCount;
+    nameList.innerHTML = '';
+    for (let i = 0; i < playerCount; i++){
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.value = names[i]; inp.maxLength = 18;
+      inp.setAttribute('aria-label', 'Player ' + (i + 1) + ' name');
+      inp.addEventListener('input', function(){ tintInput(inp, i); });
+      nameList.appendChild(inp);
+      tintInput(inp, i);
+    }
+    pCount.textContent = playerCount;
+  }
+  function clampTarget(n){ return Math.max(1, Math.min(999, Math.round(n) || 10)); }
+  function renderSetup(){
+    renderNames();
+    targetInput.value = targetScore;
+    syncDecadeChips();
+    playerLock.classList.add('hidden');
+  }
+  function startScoringGame(){
+    readNames();
+    targetScore = clampTarget(+targetInput.value);
+    game = { players: names.slice(0, playerCount).map(n => ({ name: n, score: 0 })), target: targetScore, turn: 0 };
+    saveGame();
+    buildDeck();
+  }
+
+  /* ---------- decade chips (setup) ---------- */
+  function syncDecadeChips(){
+    decadeRow.querySelectorAll('.dchip').forEach(b => {
+      const d = b.dataset.dec;
+      const on = (d === 'all') ? selDecades.size === 0 : selDecades.has(+d);
+      b.classList.toggle('active', on);
+    });
+  }
+  decadeRow.addEventListener('click', function(e){
+    const b = e.target.closest('.dchip'); if (!b) return;
+    e.stopPropagation();
+    if (b.dataset.dec === 'all'){
+      selDecades.clear();                 // "All years"
+    } else {
+      const d = +b.dataset.dec;
+      if (selDecades.has(d)) selDecades.delete(d); else selDecades.add(d);
+    }
+    syncDecadeChips();
+  });
+
+  /* ---------- input ---------- */
+  revealBtn.addEventListener('click', function(e){ e.stopPropagation(); showYear(); });
+  document.getElementById('gotIt').addEventListener('click', function(e){ e.stopPropagation(); resolve(true); });
+  document.getElementById('missed').addEventListener('click', function(e){ e.stopPropagation(); resolve(false); });
+
+  document.getElementById('stage').addEventListener('click', function(){
+    if (!deck.length) return;
+    if (showingYear){
+      if (game) return;          // scoring: must tap Got it / Missed
+      practiceAdvance(); return; // practice: tap to advance (counts toward the free limit)
+    }
+    if (mode === 'qr') showYear(); // solo reveals via the button only
+  });
+
+  document.getElementById('shuffle').addEventListener('click', function(e){ e.stopPropagation(); buildDeck(); });
+
+  // Start over — reset the game from any in-game page (boredom / game over)
+  startOver.addEventListener('click', function(e){
+    e.stopPropagation();
+    stopPlayer(); stopConfetti();
+    game = null; clearGame();
+    resumeBtn.classList.add('hidden');
+    show('start');
+  });
+
+  // start screen
+  document.getElementById('startBtn').addEventListener('click', function(e){
+    e.stopPropagation(); show('setup'); renderSetup();
+  });
+  resumeBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    const g = loadGame(); if (!g) { show('setup'); renderSetup(); return; }
+    game = g; buildDeck();
+  });
+
+  // setup screen
+  document.getElementById('pMinus').addEventListener('click', function(){
+    readNames();
+    if (playerCount > MINP){ playerCount--; renderNames(); }
+    playerLock.classList.add('hidden');
+  });
+  document.getElementById('pPlus').addEventListener('click', function(){
+    readNames();
+    // ALPHA: player limit unlocked — full house up to MAXP (Tier 1 gate parked for later)
+    if (playerCount < PLAYER_CAP){ playerCount++; renderNames(); playerLock.classList.add('hidden'); }
+    else if (!ALPHA){ playerLock.classList.remove('hidden'); }   // free tier would gate here
+  });
+  targetInput.addEventListener('input', function(){ targetScore = clampTarget(+targetInput.value); });
+  targetInput.addEventListener('blur', function(){ targetInput.value = targetScore; });
+  document.getElementById('beginBtn').addEventListener('click', function(e){ e.stopPropagation(); startScoringGame(); });
+  document.getElementById('practiseBtn').addEventListener('click', function(e){
+    e.stopPropagation();
+    game = null; clearGame();
+    practicePlays = 1;          // first song is go #1
+    buildDeck();
+  });
+
+  // practice gate (free solo limit reached)
+  document.getElementById('gateSignup').addEventListener('click', function(e){
+    e.stopPropagation();
+    // No accounts yet — sign-up is a roadmap item; for now bounce to start.
+    show('start');
+  });
+  document.getElementById('gateBack').addEventListener('click', function(e){
+    e.stopPropagation(); show('start');
+  });
+
+  // winner screen
+  document.getElementById('playAgain').addEventListener('click', function(e){
+    e.stopPropagation(); stopConfetti();
+    if (!game) { show('setup'); renderSetup(); return; }
+    game.players.forEach(p => p.score = 0); game.turn = 0; saveGame(); buildDeck();
+  });
+  document.getElementById('newGame').addEventListener('click', function(e){
+    e.stopPropagation(); stopConfetti(); game = null; clearGame(); show('setup'); renderSetup();
+  });
+
+  /* ---------- boot ---------- */
+  show('msg');
+  fetch('songs.json')
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(data => {
+      ALL = data.filter(s => s.id);
+      if (!ALL.length){ msgText.textContent = "songs.json has no playable songs yet."; return; }
+      startSub.innerHTML = ALL.length.toLocaleString() + " songs · UK #1 singles<br>"
+        + "<span style='opacity:.7'>Hear a snippet, guess the year · pass-and-play scoring</span>";
+      if (loadGame()) resumeBtn.classList.remove('hidden');
+      show('start');
+    })
+    .catch(() => { msgText.textContent = "Couldn't load songs.json."; });
+  </script>
+</body>
+</html>
