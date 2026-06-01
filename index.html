@@ -20,7 +20,6 @@
     -webkit-user-select: none;
   }
 
-  /* Tap surface fills the screen */
   #stage {
     flex: 1;
     display: flex;
@@ -32,16 +31,21 @@
     cursor: pointer;
   }
 
-  /* ---- QR side ---- */
+  /* ---- header above the play card (logo + tagline) ---- */
+  .play-head { margin-bottom: 32px; }
+  .brand.sm { font-size: clamp(2.4rem, 11vw, 3.6rem); }
+  .tagline.sm { margin-top: 8px; font-size: 1.05rem; }
+
+  /* ============ 2-DEVICE: QR card ============ */
   .qr-card {
     background: #fff;
     border-radius: 24px;
     padding: 22px;
     box-shadow: 0 18px 50px rgba(0,0,0,.5);
+    display: inline-block;
   }
   #qr { width: 260px; height: 260px; }
   #qr img, #qr canvas { display: block; width: 260px !important; height: 260px !important; }
-
   .scan-hint {
     margin-top: 26px;
     font-size: 1.05rem;
@@ -49,6 +53,59 @@
     line-height: 1.5;
   }
   .scan-hint b { color: #f4f6fb; }
+
+  /* ============ 1-DEVICE: snippet player ============
+     A normal-size Spotify embed, with the left half (cover art + title)
+     hidden behind an opaque panel so it can't spoil the answer. The play
+     control lives on the right and stays exposed + tappable. The user taps
+     Spotify's OWN play button — the only thing the browser reliably lets
+     start audio (it blocks programmatic play of a cross-origin iframe).
+     Robust: the embed always truncates the title to the left of the
+     controls, so a fixed left cover hides it on every track and device. */
+  .play-window {
+    width: 320px; max-width: 92vw; height: 80px;
+    margin: 0 auto;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #181818;
+    box-shadow: 0 18px 50px rgba(30,215,96,.30);
+    position: relative;
+  }
+  .play-window iframe { border: 0; display: block; width: 320px; height: 80px; }
+  .play-window .cover {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    width: 240px;
+    background: #14181f;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 18px;
+    pointer-events: none;             /* taps fall through; only the play button is interactive */
+    color: #cdd6e8; font-weight: 700; font-size: 1rem;
+  }
+  .play-window .cover .disc {
+    width: 40px; height: 40px; border-radius: 8px; flex: 0 0 auto;
+    background: linear-gradient(135deg,#1ed760,#0e7a35);
+    display: flex; align-items: center; justify-content: center;
+    color: #06210f; font-size: 1.2rem;
+  }
+  .play-window.loading {
+    display: flex; align-items: center; justify-content: center;
+    color: #7f8aa3; font-size: .8rem; box-shadow: none; background: #1b2230;
+  }
+  .play-window.loading .cover { display: none; }
+
+  .snippet-meta { margin-top: 26px; min-height: 1.2em; color: #aeb6c6; font-size: 1.05rem; }
+  .snippet-meta b { color: #1ed760; }
+
+  .reveal-btn {
+    margin-top: 34px;
+    background: #1b2230;
+    color: #cdd6e8;
+    border: 0;
+    border-radius: 999px;
+    padding: 14px 32px;
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
 
   /* ---- Year side ---- */
   .year {
@@ -61,69 +118,58 @@
     background-clip: text;
     color: transparent;
   }
-  .song {
-    margin-top: 18px;
-    font-size: 1.35rem;
-    font-weight: 600;
-  }
+  .song { margin-top: 18px; font-size: 1.35rem; font-weight: 600; }
   .artist { color: #aeb6c6; font-weight: 500; }
   .next-hint { margin-top: 30px; color: #7f8aa3; font-size: 1rem; }
 
   /* ---- top bar ---- */
   .bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    font-size: .9rem;
-    color: #7f8aa3;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+    padding: 12px 14px; font-size: .9rem; color: #7f8aa3;
   }
   .bar button, .bar select {
-    background: #1b2230;
-    color: #aeb6c6;
-    border: 0;
-    border-radius: 999px;
-    padding: 8px 14px;
-    font-size: .85rem;
-    font-weight: 600;
-    -webkit-appearance: none;
-    appearance: none;
+    background: #1b2230; color: #aeb6c6; border: 0; border-radius: 999px;
+    padding: 8px 12px; font-size: .82rem; font-weight: 600;
+    -webkit-appearance: none; appearance: none;
   }
-  .bar .right { display: flex; gap: 8px; align-items: center; }
+  .bar .right { display: flex; gap: 6px; align-items: center; }
+  #count { flex: 0 0 auto; white-space: nowrap; }
+
+  /* segmented mode toggle */
+  .seg { display: inline-flex; background: #1b2230; border-radius: 999px; padding: 2px; }
+  .seg button {
+    background: transparent; color: #7f8aa3; padding: 6px 11px; border-radius: 999px;
+    font-size: .8rem; font-weight: 700;
+  }
+  .seg button.active { background: #1ed760; color: #06210f; }
+
   .hidden { display: none !important; }
-  /* loading / empty message */
   .msg { color: #aeb6c6; font-size: 1.1rem; line-height: 1.5; }
 
   /* ---- start screen ---- */
   .brand {
-    font-size: clamp(3rem, 16vw, 6rem);
-    font-weight: 800;
-    letter-spacing: -2px;
-    line-height: 1;
+    font-size: clamp(3rem, 16vw, 6rem); font-weight: 800; letter-spacing: -2px; line-height: 1;
     background: linear-gradient(180deg,#fff,#9fb4ff);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .tagline { margin-top: 14px; color: #aeb6c6; font-size: 1.15rem; }
   .start-btn {
-    margin-top: 40px;
-    background: linear-gradient(180deg,#6c8bff,#4f6cff);
-    color: #fff;
-    border: 0;
-    border-radius: 999px;
-    padding: 16px 44px;
-    font-size: 1.2rem;
-    font-weight: 700;
-    box-shadow: 0 12px 30px rgba(79,108,255,.4);
+    margin-top: 40px; background: linear-gradient(180deg,#1ed760,#15b34c);
+    color: #06210f; border: 0; border-radius: 999px; padding: 16px 44px;
+    font-size: 1.2rem; font-weight: 700; box-shadow: 0 12px 30px rgba(30,215,96,.4);
   }
-  .start-sub { margin-top: 22px; color: #7f8aa3; font-size: .95rem; }
+  .start-sub { margin-top: 22px; color: #7f8aa3; font-size: .95rem; line-height: 1.5; }
 </style>
 </head>
 <body>
   <div class="bar hidden" id="bar">
     <span id="count">—</span>
     <div class="right">
+      <div class="seg" id="modeToggle">
+        <button data-mode="snippet" aria-label="Play on this device">Solo</button>
+        <button data-mode="qr" aria-label="Scan with a second device">QR</button>
+      </div>
       <select id="decade" aria-label="Decade">
         <option value="all">All years</option>
         <option value="1950">50s</option>
@@ -140,16 +186,32 @@
   </div>
 
   <div id="stage">
-    <!-- QR view -->
-    <div id="qrView">
-      <div class="qr-card"><div id="qr"></div></div>
-      <div class="scan-hint">
-        <b>Scan, then press play in Spotify</b><br />
-        Tap this screen to reveal the year
+    <!-- Play view: holds BOTH modes; only one block shows at a time -->
+    <div id="playView">
+      <!-- header (snippet mode only — QR mode keeps the code prominent) -->
+      <div class="play-head" id="playHead">
+        <div class="brand sm">Yearworm</div>
+        <div class="tagline sm">Hear it. Guess the year.</div>
+      </div>
+
+      <!-- 2-device: QR -->
+      <div id="qrBlock" class="hidden">
+        <div class="qr-card"><div id="qr"></div></div>
+        <div class="scan-hint">
+          <b>Scan, then press play in Spotify</b><br />
+          Tap this screen to reveal the year
+        </div>
+      </div>
+
+      <!-- 1-device: snippet player -->
+      <div id="snippetBlock">
+        <div class="play-window loading" id="playWindow">loading…</div>
+        <div class="snippet-meta" id="snippetMeta">tap <b>&#9654;</b> to hear the snippet</div>
+        <button class="reveal-btn" id="revealBtn">Reveal year &rarr;</button>
       </div>
     </div>
 
-    <!-- Year view -->
+    <!-- Year view (shared) -->
     <div id="yearView" class="hidden">
       <div class="year" id="yearNum">1984</div>
       <div class="song"><span id="songTitle"></span></div>
@@ -169,33 +231,76 @@
     </div>
   </div>
 
-  <!-- QR generator -->
+  <!-- QR generator (used only in 2-device mode) -->
   <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a/qrcode.min.js"></script>
   <script>
   /* =========================================================
-     The deck loads from songs.json (built from the UK #1s).
-     Each entry is { title, artist, year, id } where id is the
-     Spotify track id, so the QR opens that exact track.
+     Yearworm — Hitster-style "guess the year" game off UK #1s.
+     Two ways to play, switchable from the top bar:
+       • Solo (1 device): plays the track's snippet right here via
+         Spotify's embedded player, with cover art + title masked so
+         they don't give the answer away.
+       • QR (2 devices): shows a QR that opens the track in Spotify on
+         a second phone — the original card-game style of play.
+     Each entry in songs.json is { title, artist, year, id } where id
+     is the Spotify track id.
      ========================================================= */
-  let ALL = [];      // every song loaded
-  let deck = [];     // current filtered + shuffled deck
-  let pos = 0;
-  let showingYear = false;
+  let ALL = [], deck = [], pos = 0, showingYear = false;
+  let mode = 'snippet';
+  try { mode = localStorage.getItem('yw_mode') || 'snippet'; } catch(e){}
 
-  const qrView    = document.getElementById('qrView');
-  const yearView  = document.getElementById('yearView');
-  const msgView   = document.getElementById('msgView');
-  const msgText   = document.getElementById('msgText');
-  const qrBox     = document.getElementById('qr');
-  const yearNum   = document.getElementById('yearNum');
-  const songTitle = document.getElementById('songTitle');
-  const songArtist= document.getElementById('songArtist');
-  const countEl   = document.getElementById('count');
-  const decadeSel = document.getElementById('decade');
-  const bar       = document.getElementById('bar');
-  const startView = document.getElementById('startView');
-  const startSub  = document.getElementById('startSub');
+  const playView   = document.getElementById('playView');
+  const playHead   = document.getElementById('playHead');
+  const qrBlock    = document.getElementById('qrBlock');
+  const snippetBlock = document.getElementById('snippetBlock');
+  const qrBox      = document.getElementById('qr');
+  const yearView   = document.getElementById('yearView');
+  const msgView    = document.getElementById('msgView');
+  const msgText    = document.getElementById('msgText');
+  const startView  = document.getElementById('startView');
+  const startSub   = document.getElementById('startSub');
+  const yearNum    = document.getElementById('yearNum');
+  const songTitle  = document.getElementById('songTitle');
+  const songArtist = document.getElementById('songArtist');
+  const countEl    = document.getElementById('count');
+  const decadeSel  = document.getElementById('decade');
+  const bar        = document.getElementById('bar');
+  const revealBtn  = document.getElementById('revealBtn');
+  const playWindow = document.getElementById('playWindow');
+  const modeToggle = document.getElementById('modeToggle');
 
+  /* ---------- Solo: Spotify snippet player ----------
+     A fresh native embed per song; the user taps Spotify's own play
+     button. To stop a snippet we just remove the iframe. */
+  function mountPlayer(id){
+    playWindow.classList.remove('loading');
+    playWindow.innerHTML =
+      '<iframe src="https://open.spotify.com/embed/track/' + id + '?utm_source=generator" '
+      + 'width="320" height="80" frameborder="0" loading="eager" '
+      + 'allow="autoplay; encrypted-media; clipboard-write"></iframe>'
+      + '<div class="cover"><span class="disc">&#9834;</span><span>Mystery snippet</span></div>';
+  }
+  function stopPlayer(){ playWindow.innerHTML = '<span>loading…</span>'; playWindow.classList.add('loading'); }
+
+  /* ---------- QR: opens the track in Spotify on a 2nd device ---------- */
+  function spotifyUrl(song){
+    if (song.id) return "https://open.spotify.com/track/" + song.id;
+    const q = encodeURIComponent(song.title + " " + song.artist);
+    return "https://open.spotify.com/search/" + q;
+  }
+  function renderQR(song){
+    qrBox.innerHTML = "";
+    const url = spotifyUrl(song);
+    if (window.QRCode){
+      new QRCode(qrBox, { text: url, width: 260, height: 260,
+        colorDark: "#000000", colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M });
+    } else {
+      qrBox.innerHTML = '<a style="color:#000;word-break:break-all" href="'+url+'">'+url+'</a>';
+    }
+  }
+
+  /* ---------- deck logic ---------- */
   function shuffle(a){
     for (let i = a.length - 1; i > 0; i--){
       const j = Math.floor(Math.random() * (i + 1));
@@ -203,20 +308,15 @@
     }
     return a;
   }
-
-  // Primary artist, lower-cased, for keeping the same act from clustering.
+  // Primary artist, lower-cased, so the same act doesn't cluster.
   function artistKey(s){
     return (s.artist || "").toLowerCase()
       .split(/\s+(?:feat\.?|ft\.?|featuring|with|&|x|and)\s+|,/)[0].trim();
   }
-
-  // Shuffle, then re-lay the deck so the same artist stays at least `gap`
-  // cards apart (e.g. two Spice Girls #1s never cluster). Each step takes the
-  // artist with the most songs left that isn't still "cooling down"; if a
-  // decade is too dense to separate fully, it just picks the next best.
+  // Shuffle, then re-lay so the same artist stays >= gap cards apart.
   function spacedShuffle(a, gap){
     shuffle(a);
-    const buckets = new Map();        // artist -> [songs] (already random order)
+    const buckets = new Map();
     for (const s of a){
       const k = artistKey(s);
       if (!buckets.has(k)) buckets.set(k, []);
@@ -230,8 +330,6 @@
         if (!items.length) continue;
         const li = lastIdx.has(k) ? lastIdx.get(k) : -Infinity;
         const eligible = i - li > gap;
-        // prefer eligible artists; only fall back to a cooling-down one if
-        // nothing else is available (deck too dense for this spacing).
         const rank = (eligible ? 1e6 : 0) + items.length;
         if (rank > bestCount){ best = k; bestCount = rank; }
       }
@@ -242,41 +340,37 @@
     return a;
   }
 
-  function spotifyUrl(song){
-    if (song.id) return "https://open.spotify.com/track/" + song.id;
-    const q = encodeURIComponent(song.title + " " + song.artist);
-    return "https://open.spotify.com/search/" + q;
-  }
-
-  function renderQR(song){
-    qrBox.innerHTML = "";
-    const url = spotifyUrl(song);
-    if (window.QRCode){
-      new QRCode(qrBox, { text: url, width: 260, height: 260,
-        colorDark: "#000000", colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M });
-    } else {
-      qrBox.innerHTML = '<a style="color:#000;word-break:break-all" href="'+url+'">'+url+'</a>';
-    }
-  }
-
+  /* ---------- views ---------- */
   function show(view){
-    qrView.classList.toggle('hidden', view !== 'qr');
+    playView.classList.toggle('hidden', view !== 'play');
     yearView.classList.toggle('hidden', view !== 'year');
     msgView.classList.toggle('hidden', view !== 'msg');
     startView.classList.toggle('hidden', view !== 'start');
     bar.classList.toggle('hidden', view === 'start');
   }
 
-  function showQR(){
+  // Render the current song in whichever mode is active.
+  function renderPlay(){
     showingYear = false;
-    renderQR(deck[pos]);
-    show('qr');
+    const song = deck[pos];
+    if (mode === 'qr'){
+      playHead.classList.add('hidden');
+      snippetBlock.classList.add('hidden');
+      qrBlock.classList.remove('hidden');
+      renderQR(song);
+    } else {
+      playHead.classList.remove('hidden');
+      qrBlock.classList.add('hidden');
+      snippetBlock.classList.remove('hidden');
+      mountPlayer(song.id);
+    }
+    show('play');
     countEl.textContent = (pos + 1) + " / " + deck.length;
   }
 
   function showYear(){
     showingYear = true;
+    stopPlayer();                       // kill any snippet audio
     const song = deck[pos];
     yearNum.textContent    = song.year;
     songTitle.textContent  = song.title;
@@ -286,23 +380,17 @@
 
   function nextSong(){
     pos = pos + 1;
-    if (pos >= deck.length){        // exhausted the deck -> reshuffle
+    if (pos >= deck.length){            // exhausted -> reshuffle
       const lastKey = artistKey(deck[deck.length - 1]);
       spacedShuffle(deck, 5);
-      // don't let the same act straddle the wrap (last card -> new first card)
+      // don't let the same act straddle the wrap
       if (deck.length > 1 && artistKey(deck[0]) === lastKey){
         const k = deck.findIndex(s => artistKey(s) !== lastKey);
         if (k > 0){ [deck[0], deck[k]] = [deck[k], deck[0]]; }
       }
       pos = 0;
     }
-    showQR();
-  }
-
-  function tap(){
-    if (!deck.length) return;
-    if (showingYear) nextSong();
-    else showYear();
+    renderPlay();
   }
 
   function buildDeck(){
@@ -317,28 +405,62 @@
       show('msg');
       countEl.textContent = "0 / 0";
     } else {
-      showQR();
+      renderPlay();
     }
   }
 
-  document.getElementById('stage').addEventListener('click', tap);
-  document.getElementById('shuffle').addEventListener('click', function(e){
+  /* ---------- mode toggle ---------- */
+  function updateToggle(){
+    const btns = modeToggle.querySelectorAll('button');
+    for (const b of btns) b.classList.toggle('active', b.dataset.mode === mode);
+  }
+  function setMode(m){
+    if (m === mode) return;
+    mode = m;
+    try { localStorage.setItem('yw_mode', m); } catch(e){}
+    updateToggle();
+    // re-render the current card in the new mode (same song); leave the
+    // year reveal alone — the next song will pick up the new mode.
+    if (deck.length && !showingYear) renderPlay();
+  }
+  modeToggle.addEventListener('click', function(e){
+    const b = e.target.closest('button');
+    if (!b) return;
     e.stopPropagation();
-    buildDeck();
+    setMode(b.dataset.mode);
+  });
+
+  /* ---------- input ----------
+     Solo:  tap Spotify's play button to listen, tap "Reveal year",
+            then tap the screen to advance.
+     QR:    tap the screen to reveal the year, tap again to advance. */
+  revealBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    showYear();
+  });
+  document.getElementById('stage').addEventListener('click', function(){
+    if (!deck.length) return;
+    if (showingYear) { nextSong(); return; }
+    if (mode === 'qr') showYear();      // solo mode reveals via the button only
+  });
+  document.getElementById('shuffle').addEventListener('click', function(e){
+    e.stopPropagation(); buildDeck();
   });
   document.getElementById('startBtn').addEventListener('click', function(e){
-    e.stopPropagation();
-    buildDeck();
+    e.stopPropagation(); buildDeck();
   });
   decadeSel.addEventListener('change', buildDeck);
 
+  /* ---------- boot ---------- */
+  updateToggle();
   show('msg');
   fetch('songs.json')
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(data => {
-      ALL = data.filter(s => s.id);   // only songs we have a playable id for
+      ALL = data.filter(s => s.id);
       if (!ALL.length){ msgText.textContent = "songs.json has no playable songs yet."; return; }
-      startSub.textContent = ALL.length.toLocaleString() + " songs · UK #1 singles";
+      startSub.innerHTML = ALL.length.toLocaleString() + " songs · UK #1 singles<br>"
+        + "<span style='opacity:.7'>Solo plays a ~30s snippet here · QR scans to a 2nd device</span>";
       show('start');
     })
     .catch(() => { msgText.textContent = "Couldn't load songs.json."; });
