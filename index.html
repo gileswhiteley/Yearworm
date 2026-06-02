@@ -78,7 +78,8 @@
   .snippet-meta { margin-top: 26px; min-height: 1.2em; color: #aeb6c6; font-size: 1.05rem; }
   .snippet-meta b { color: var(--accent); }
 
-  .reveal-btn { margin-top: 34px; background: #1b2230; color: #cdd6e8; border: 0; border-radius: 999px; padding: 14px 32px; font-size: 1.05rem; font-weight: 700; }
+  .reveal-btn { margin-top: 34px; background: #1b2230; color: #cdd6e8; border: 0; border-radius: 999px; padding: 14px 32px; font-size: 1.05rem; font-weight: 700; transition: opacity .2s; }
+  .reveal-btn:disabled { opacity: .4; cursor: not-allowed; }
 
   /* ---- Year side ---- */
   .year {
@@ -315,7 +316,7 @@
 
       <div class="setup-section-label">Difficulty</div>
       <div class="deck-row" id="diffRow">
-        <button class="dchip" data-diff="easy">Easy (big hits)</button>
+        <button class="dchip" data-diff="easy">Easier (big hits)</button>
         <button class="dchip active" data-diff="all">All tracks</button>
       </div>
 
@@ -541,6 +542,7 @@
   }
   playBtn.addEventListener('click', function(e){
     e.stopPropagation();
+    revealBtn.disabled = false;                  // playing the track unlocks Reveal year
     const st = player.dataset.state;
     if (st === 'playing'){ audio.pause(); setSnipState('paused'); return; }
     if (st === 'ended'){ resetProgress(); audio.currentTime = 0; }
@@ -560,11 +562,12 @@
   function loadSnippet(){
     stopPlayer();
     const song = deck[pos];
+    revealBtn.disabled = true;                   // locked until the track is played
     snippetMeta.innerHTML = 'tap <b>&#9654;</b> to hear the snippet';
     setSnipState('loading');
     resolvePreview(song).then(function(url){
       if (deck[pos] !== song) return;            // user already moved on
-      if (!url){ pendingPlay = false; setSnipState('idle');
+      if (!url){ pendingPlay = false; setSnipState('idle'); revealBtn.disabled = false;  // can't play it, so allow skip
                  snippetMeta.innerHTML = "couldn't load this clip — tap <b>Reveal</b> to skip"; return; }
       audio.src = url; audioReady = true;
       setSnipState(player.dataset.state === 'loading' ? 'idle' : player.dataset.state);
