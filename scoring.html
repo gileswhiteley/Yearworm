@@ -92,13 +92,15 @@
   /* ---- adjudication (scoring) ---- */
   .adj-q { font-size: 1.2rem; margin-top: 30px; }
   .adj-q b { color: var(--accent); }
-  .adj-actions { margin-top: 22px; display: flex; gap: 44px; justify-content: center; }
+  .adj-actions { margin-top: 22px; display: flex; gap: clamp(14px, 6vw, 40px); justify-content: center; }
   .adj-action { background: none; border: 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 11px; }
-  .adj-circle { width: 78px; height: 78px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.3rem; font-weight: 800; line-height: 1; transition: transform .12s; }
+  .adj-circle { width: 74px; height: 74px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 800; line-height: 1; transition: transform .12s; }
   .adj-action:active .adj-circle { transform: scale(.9); }
-  .adj-circle.yes { background: rgba(52,217,119,.16); color: #34d977; border: 2px solid #34d977; }
-  .adj-circle.no  { background: rgba(255,107,107,.14); color: #ff6b6b; border: 2px solid #ff6b6b; }
-  .adj-label { font-size: .98rem; font-weight: 700; color: #cdd6e8; }
+  .adj-circle.yes  { background: rgba(52,217,119,.16); color: #34d977; border: 2px solid #34d977; }
+  .adj-circle.close{ background: rgba(255,193,71,.16); color: #ffc147; border: 2px solid #ffc147; font-size: 1.7rem; }
+  .adj-circle.no   { background: rgba(255,107,107,.14); color: #ff6b6b; border: 2px solid #ff6b6b; }
+  .adj-label { font-size: .92rem; font-weight: 700; color: #cdd6e8; text-align: center; }
+  .adj-pts { font-size: .74rem; font-weight: 700; color: #8d97ab; }
 
   /* ---- top bar ---- */
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-size: .9rem; color: #7f8aa3; }
@@ -253,10 +255,11 @@
       <div class="artist" id="songArtist"></div>
       <div class="next-hint" id="nextHint">tap for the next song &rarr;</div>
       <div id="adjudicate" class="hidden">
-        <div class="adj-q">Did <b id="adjName">Player 1</b> get the year?</div>
+        <div class="adj-q">How did <b id="adjName">Player 1</b> do?</div>
         <div class="adj-actions">
-          <button class="adj-action" id="gotIt"><span class="adj-circle yes">&#10003;</span><span class="adj-label">Got it</span></button>
-          <button class="adj-action" id="missed"><span class="adj-circle no">&#10007;</span><span class="adj-label">Missed</span></button>
+          <button class="adj-action" id="gotIt"><span class="adj-circle yes">&#10003;</span><span class="adj-label">Got it</span><span class="adj-pts">+2</span></button>
+          <button class="adj-action" id="oneOff"><span class="adj-circle close">&#177;1</span><span class="adj-label">One year off</span><span class="adj-pts">+1</span></button>
+          <button class="adj-action" id="missed"><span class="adj-circle no">&#10007;</span><span class="adj-label">Missed</span><span class="adj-pts">+0</span></button>
         </div>
       </div>
     </div>
@@ -763,33 +766,33 @@
     return null;
   }
 
-  function resolve(correct){
+  function resolve(pts){
     if (!game) return;
     if (game.solo){
-      if (correct) game.score++;
+      game.score += pts;
       game.played++;
       saveGame();
       if (game.played >= game.goes){ endSolo(); return; }
-      showSoloToast(correct, function(){ saveGame(); nextSong(); });
+      showSoloToast(pts, function(){ saveGame(); nextSong(); });
       return;
     }
     const idx = game.turn;
     const p = game.players[idx];
-    if (correct) p.score++;
+    p.score += pts;
     saveGame();
     if (p.score >= game.target){ endGame(idx); return; }
-    showScoreToast(idx, correct, function(){
+    showScoreToast(idx, pts, function(){
       game.turn = (game.turn + 1) % game.players.length;
       saveGame();
       nextSong();
     });
   }
 
-  function showScoreToast(idx, correct, done){
+  function showScoreToast(idx, pts, done){
     const p = game.players[idx], c = pcolour(idx);
     toastCard.style.setProperty('--tc', c);
     toastName.textContent = p.name;
-    toastScore.textContent = (correct ? '+1 · ' : '') + p.score + (p.score === 1 ? ' point' : ' points');
+    toastScore.textContent = (pts ? '+' + pts + ' · ' : '') + p.score + (p.score === 1 ? ' point' : ' points');
     toast.classList.remove('hidden');
     // restart the burst animation each time
     toastCard.style.animation = 'none';
@@ -798,10 +801,10 @@
     setTimeout(function(){ toast.classList.add('hidden'); done(); }, 1300);
   }
 
-  function showSoloToast(correct, done){
+  function showSoloToast(pts, done){
     toastCard.style.setProperty('--tc', DEFAULT_ACCENT);
-    toastName.textContent = correct ? 'Nice!' : 'No worries';
-    toastScore.textContent = game.score + ' / ' + game.played;
+    toastName.textContent = pts === 2 ? 'Bang on!' : pts === 1 ? 'So close!' : 'No worries';
+    toastScore.textContent = game.score + ' / ' + (game.played * 2);
     toast.classList.remove('hidden');
     toastCard.style.animation = 'none';
     void toastCard.offsetWidth;
@@ -827,13 +830,13 @@
     return '\u{1F3A7}';                  // headphones
   }
   function endSolo(){
-    const score = game.score, goes = game.goes;
+    const score = game.score, max = game.goes * 2;
     clearGame();
     setAccent(DEFAULT_ACCENT);
     winKicker.textContent = 'Your score';
-    trophy.textContent = soloEmoji(score, goes);
-    winName.textContent = score + ' / ' + goes;
-    winSub.textContent = soloGrade(score, goes);
+    trophy.textContent = soloEmoji(score, max);
+    winName.textContent = score + ' / ' + max;
+    winSub.textContent = soloGrade(score, max);
     winBoard.innerHTML = '';
     show('winner');
     if (score > 0) launchConfetti();
@@ -960,8 +963,9 @@
 
   /* ---------- input ---------- */
   revealBtn.addEventListener('click', function(e){ e.stopPropagation(); showYear(); });
-  document.getElementById('gotIt').addEventListener('click', function(e){ e.stopPropagation(); resolve(true); });
-  document.getElementById('missed').addEventListener('click', function(e){ e.stopPropagation(); resolve(false); });
+  document.getElementById('gotIt').addEventListener('click', function(e){ e.stopPropagation(); resolve(2); });
+  document.getElementById('oneOff').addEventListener('click', function(e){ e.stopPropagation(); resolve(1); });
+  document.getElementById('missed').addEventListener('click', function(e){ e.stopPropagation(); resolve(0); });
 
   document.getElementById('stage').addEventListener('click', function(){
     if (!deck.length) return;
