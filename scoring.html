@@ -273,7 +273,6 @@
       <div class="tagline">Hear it. Guess the year.</div>
       <button class="start-btn" id="startBtn">New game</button>
       <button class="link-btn hidden" id="resumeBtn">Resume game</button>
-      <div class="start-sub" id="startSub"></div>
     </div>
 
     <!-- Setup screen -->
@@ -411,7 +410,6 @@
   const startView  = document.getElementById('startView');
   const setupView  = document.getElementById('setupView');
   const winnerView = document.getElementById('winnerView');
-  const startSub   = document.getElementById('startSub');
   const yearNum    = document.getElementById('yearNum');
   const songTitle  = document.getElementById('songTitle');
   const songArtist = document.getElementById('songArtist');
@@ -1048,8 +1046,6 @@
     .then(data => {
       ALL = data.filter(s => s.dz || s.itunes);   // only songs with a playable preview source
       if (!ALL.length){ msgText.textContent = "songs.json has no playable songs yet."; return; }
-      startSub.innerHTML = ALL.length.toLocaleString() + " songs · UK #1 singles<br>"
-        + "<span style='opacity:.7'>Hear a snippet, guess the year · pass-and-play scoring</span>";
       loadNames();
       if (loadGame()) resumeBtn.classList.remove('hidden');
       show('start');
