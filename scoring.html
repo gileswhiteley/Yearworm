@@ -57,25 +57,23 @@
   .scan-hint { margin-top: 26px; font-size: 1.05rem; color: #aeb6c6; line-height: 1.5; }
   .scan-hint b { color: #f4f6fb; }
 
-  /* ============ snippet player ============ */
-  .play-window {
-    width: 320px; max-width: 92vw; height: 80px; margin: 0 auto;
-    overflow: hidden; border-radius: 14px; background: #181818;
-    box-shadow: 0 16px 44px -10px var(--accent); position: relative;
+  /* ============ snippet player (own <audio>, custom pill button) ============ */
+  .player { width: 320px; max-width: 92vw; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+  .play-btn {
+    min-width: 200px; max-width: 92vw; height: 86px; padding: 0 44px;
+    border-radius: 999px; border: 0; cursor: pointer;
+    background: var(--accent); color: #0a0e14;
+    box-shadow: 0 16px 42px -8px var(--accent);
+    font-size: 2.4rem; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .08s ease;
   }
-  .play-window iframe { border: 0; display: block; width: 320px; height: 80px; }
-  .play-window .cover {
-    position: absolute; top: 0; left: 0; bottom: 0; width: 240px;
-    background: #14181f; display: flex; align-items: center; gap: 12px;
-    padding: 0 18px; pointer-events: none; color: #cdd6e8; font-weight: 700; font-size: 1rem;
-  }
-  .play-window .cover .disc {
-    width: 40px; height: 40px; border-radius: 8px; flex: 0 0 auto;
-    background: var(--accent);
-    display: flex; align-items: center; justify-content: center; color: #0a0e14; font-size: 1.2rem;
-  }
-  .play-window.loading { display: flex; align-items: center; justify-content: center; color: #7f8aa3; font-size: .8rem; box-shadow: none; background: #1b2230; }
-  .play-window.loading .cover { display: none; }
+  .play-btn:active { transform: scale(.96); }
+  .player[data-state="loading"] .play-btn { opacity: .55; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: .45; } 50% { opacity: .8; } }
+  .player-label { color: #cdd6e8; font-weight: 700; font-size: 1.05rem; letter-spacing: .2px; }
+  .progress { width: 100%; height: 6px; border-radius: 999px; background: #1b2230; overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width .15s linear; }
 
   .snippet-meta { margin-top: 26px; min-height: 1.2em; color: #aeb6c6; font-size: 1.05rem; }
   .snippet-meta b { color: var(--accent); }
@@ -237,7 +235,11 @@
       </div>
 
       <div id="snippetBlock">
-        <div class="play-window loading" id="playWindow">loading…</div>
+        <div class="player" id="player" data-state="idle">
+          <button class="play-btn" id="playBtn" aria-label="Play snippet">&#9654;</button>
+          <div class="player-label" id="playerLabel">Mystery snippet</div>
+          <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
         <div class="snippet-meta" id="snippetMeta">tap <b>&#9654;</b> to hear the snippet</div>
         <button class="reveal-btn" id="revealBtn">Reveal year &rarr;</button>
       </div>
@@ -409,7 +411,10 @@
   const playerLock = document.getElementById('playerLock');
   const bar        = document.getElementById('bar');
   const revealBtn  = document.getElementById('revealBtn');
-  const playWindow = document.getElementById('playWindow');
+  const player      = document.getElementById('player');
+  const playBtn     = document.getElementById('playBtn');
+  const snippetMeta = document.getElementById('snippetMeta');
+  const progressFill = document.getElementById('progressFill');
   const gateView   = document.getElementById('gateView');
   const scorebar   = document.getElementById('scorebar');
   const scoreTarget = document.getElementById('scoreTarget');
@@ -440,16 +445,97 @@
 
   function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-  /* ---------- Solo: Spotify snippet player ---------- */
-  function mountPlayer(id){
-    playWindow.classList.remove('loading');
-    playWindow.innerHTML =
-      '<iframe src="https://open.spotify.com/embed/track/' + id + '?utm_source=generator" '
-      + 'width="320" height="80" frameborder="0" loading="eager" '
-      + 'allow="autoplay; encrypted-media; clipboard-write"></iframe>'
-      + '<div class="cover"><span class="disc">&#9834;</span><span>Mystery snippet</span></div>';
+  /* ---------- snippet player (we own the audio) ----------
+     A 30s preview MP3 in our own <audio>, custom Play/Replay pill, hard stop
+     at SNIPPET_SECS. Preview source per song (from match_previews.py):
+       song.dz     -> Deezer track id. Deezer's preview URLs are SIGNED and
+                      EXPIRE (~1hr), so we fetch a FRESH one at play time via
+                      JSONP (api.deezer.com blocks normal cross-site fetch).
+       song.itunes -> a stable iTunes preview URL, played directly.
+     Songs with neither are filtered out of the deck at load time. */
+  const SNIPPET_SECS = 30;
+  const ICON = { play: '▶', pause: '⏸', replay: '↻' };
+  const audio = new Audio();
+  audio.preload = 'auto';
+  let audioReady = false;     // current song's URL resolved + assigned to audio.src
+  let pendingPlay = false;    // user tapped Play before the URL was ready
+  const urlCache = new Map(); // song.id -> resolved preview URL (per session)
+
+  function jsonp(url){
+    return new Promise(function(resolve, reject){
+      const cb = '_dz' + Math.random().toString(36).slice(2);
+      const s = document.createElement('script');
+      const timer = setTimeout(function(){ cleanup(); reject(); }, 8000);
+      function cleanup(){ clearTimeout(timer); delete window[cb]; s.remove(); }
+      window[cb] = function(data){ cleanup(); resolve(data); };
+      s.onerror = function(){ cleanup(); reject(); };
+      s.src = url + (url.indexOf('?') < 0 ? '?' : '&') + 'output=jsonp&callback=' + cb;
+      document.head.appendChild(s);
+    });
   }
-  function stopPlayer(){ playWindow.innerHTML = '<span>loading…</span>'; playWindow.classList.add('loading'); }
+  function resolvePreview(song){
+    if (!song) return Promise.resolve(null);
+    if (urlCache.has(song.id)) return Promise.resolve(urlCache.get(song.id));
+    if (song.itunes){ urlCache.set(song.id, song.itunes); return Promise.resolve(song.itunes); }
+    if (song.dz){
+      return jsonp('https://api.deezer.com/track/' + song.dz)
+        .then(function(d){ const u = (d && d.preview) || null; if (u) urlCache.set(song.id, u); return u; })
+        .catch(function(){ return null; });
+    }
+    return Promise.resolve(null);
+  }
+  function setSnipState(s){
+    player.dataset.state = s;
+    playBtn.innerHTML = (s === 'playing') ? ICON.pause : (s === 'ended') ? ICON.replay : ICON.play;
+    playBtn.setAttribute('aria-label', s === 'playing' ? 'Pause snippet' : s === 'ended' ? 'Replay snippet' : 'Play snippet');
+  }
+  function resetProgress(){ progressFill.style.transition = 'none'; progressFill.style.width = '0%';
+    void progressFill.offsetWidth; progressFill.style.transition = ''; }
+
+  audio.addEventListener('timeupdate', function(){
+    const t = audio.currentTime;
+    progressFill.style.width = Math.min(100, t / SNIPPET_SECS * 100) + '%';
+    if (t >= SNIPPET_SECS){ audio.pause(); audio.currentTime = 0; progressFill.style.width = '100%'; setSnipState('ended'); }
+  });
+  audio.addEventListener('ended', function(){ progressFill.style.width = '100%'; setSnipState('ended'); });
+
+  function startPlayback(){
+    audio.play().then(function(){ setSnipState('playing'); })
+                .catch(function(){ setSnipState(audioReady ? 'idle' : 'loading'); });
+  }
+  playBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    const st = player.dataset.state;
+    if (st === 'playing'){ audio.pause(); setSnipState('paused'); return; }
+    if (st === 'ended'){ resetProgress(); audio.currentTime = 0; }
+    if (!audioReady){ pendingPlay = true; setSnipState('loading'); return; }
+    startPlayback();
+  });
+
+  function stopPlayer(){
+    audio.pause(); audio.removeAttribute('src'); audioReady = false; pendingPlay = false;
+    try { audio.load(); } catch (e) {}
+    resetProgress(); setSnipState('idle');
+  }
+  function prefetchNext(){
+    const next = deck[(pos + 1) % deck.length];
+    if (next && (next.dz || next.itunes)) resolvePreview(next);  // warms urlCache
+  }
+  function loadSnippet(){
+    stopPlayer();
+    const song = deck[pos];
+    snippetMeta.innerHTML = 'tap <b>&#9654;</b> to hear the snippet';
+    setSnipState('loading');
+    resolvePreview(song).then(function(url){
+      if (deck[pos] !== song) return;            // user already moved on
+      if (!url){ pendingPlay = false; setSnipState('idle');
+                 snippetMeta.innerHTML = "couldn't load this clip — tap <b>Reveal</b> to skip"; return; }
+      audio.src = url; audioReady = true;
+      setSnipState(player.dataset.state === 'loading' ? 'idle' : player.dataset.state);
+      if (pendingPlay){ pendingPlay = false; startPlayback(); }
+    });
+    prefetchNext();
+  }
 
   /* ---------- QR ---------- */
   function spotifyUrl(song){
@@ -561,7 +647,7 @@
       playHead.classList.toggle('hidden', !!game);   // scoring shows the turn banner instead of the logo
       qrBlock.classList.add('hidden');
       snippetBlock.classList.remove('hidden');
-      mountPlayer(song.id);
+      loadSnippet();
     }
     if (game){
       setAccent(pcolour(game.turn));
@@ -869,7 +955,7 @@
   fetch('songs.json')
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(data => {
-      ALL = data.filter(s => s.id);
+      ALL = data.filter(s => s.dz || s.itunes);   // only songs with a playable preview source
       if (!ALL.length){ msgText.textContent = "songs.json has no playable songs yet."; return; }
       startSub.innerHTML = ALL.length.toLocaleString() + " songs · UK #1 singles<br>"
         + "<span style='opacity:.7'>Hear a snippet, guess the year · pass-and-play scoring</span>";
