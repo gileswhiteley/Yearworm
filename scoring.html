@@ -152,6 +152,9 @@
   .dchip { background: #161b24; border: 2px solid #283042; color: #aeb6c6; border-radius: 999px; padding: 9px 15px; font-size: .92rem; font-weight: 700; -webkit-appearance: none; appearance: none; }
   .dchip.active { background: var(--accent); border-color: var(--accent); color: #0a0e14; }
   .lock-note { color: #7f8aa3; font-size: .82rem; margin-top: 8px; }
+  /* deck toggle: two segmented pills, same language as the era chips */
+  .deck-row { display: flex; gap: 8px; width: min(360px, 90vw); }
+  .deck-row .dchip { flex: 1; padding: 12px 12px; font-size: .98rem; }
   #playerLock { margin-top: 0; margin-bottom: 4px; color: #d8b25a; }
   #decadeLock { margin-bottom: 4px; }
   .count-row { display: flex; align-items: center; gap: 14px; justify-content: center; margin-bottom: 22px; }
@@ -289,6 +292,13 @@
       <div id="nameList" class="name-list"></div>
       <div class="lock-note hidden" id="playerLock">&#x2726; More than 2 players is a Tier&nbsp;1 unlock</div>
 
+      <div class="setup-section-label">Which songs?</div>
+      <div class="deck-row" id="deckRow">
+        <button class="dchip active" data-deck="ones">UK #1s</button>
+        <button class="dchip" data-deck="tens">UK Top 10</button>
+      </div>
+      <div class="lock-note" id="deckLock">&#x2726; UK Top 10 is a Tier&nbsp;1 unlock &mdash; free for now</div>
+
       <div class="setup-section-label">Which eras?</div>
       <div class="decade-row" id="decadeRow">
         <button class="dchip active" data-dec="all">All years</button>
@@ -376,6 +386,10 @@
      board using the width, not a tiny phone column floating in black.
      ========================================================= */
   let ALL = [], deck = [], pos = 0, showingYear = false;
+  // song pool: 'ones' = UK #1s (songs.json), 'tens' = UK top 10s (songs.toptens.json)
+  let deckChoice = 'ones';
+  const DECK_FILES = { ones: 'songs.json', tens: 'songs.toptens.json' };
+  const deckCache = {};   // choice -> filtered (playable-only) array, fetched once
   // Single-device by default. QR kept in code for possible resurrection, not surfaced.
   let mode = 'snippet';
 
@@ -415,6 +429,7 @@
   const songArtist = document.getElementById('songArtist');
   const countEl    = document.getElementById('count');
   const decadeRow  = document.getElementById('decadeRow');
+  const deckRow    = document.getElementById('deckRow');
   const playerLock = document.getElementById('playerLock');
   const bar        = document.getElementById('bar');
   const revealBtn  = document.getElementById('revealBtn');
@@ -736,6 +751,24 @@
     show('gate');
   }
 
+  // Load the chosen song pool into ALL (cached after first fetch). Resolves when ready.
+  function loadDeckData(choice){
+    if (deckCache[choice]){ ALL = deckCache[choice]; return Promise.resolve(ALL); }
+    return fetch(DECK_FILES[choice])
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(data => {
+        const arr = data.filter(s => s.dz || s.itunes);   // playable previews only
+        deckCache[choice] = arr; ALL = arr; return arr;
+      });
+  }
+  // Ensure the right pool is loaded, then build & start. Shows a brief loading screen.
+  function startWithDeck(choice){
+    if (deckCache[choice]){ ALL = deckCache[choice]; buildDeck(); return; }
+    show('msg'); msgText.textContent = "Loading songs…";
+    loadDeckData(choice).then(buildDeck)
+      .catch(() => { msgText.textContent = "Couldn't load songs."; });
+  }
+
   function buildDeck(){
     deck = ALL.filter(inSelectedDecades);
     spacedShuffle(deck, 5);
@@ -925,6 +958,7 @@
     renderNames();
     targetInput.value = targetScore;
     syncDecadeChips();
+    deckRow.querySelectorAll('.dchip').forEach(x => x.classList.toggle('active', x.dataset.deck === deckChoice));
     playerLock.classList.add('hidden');
   }
   function startGame(){
@@ -932,13 +966,21 @@
     readNames();
     saveNames();
     if (playerCount === 1){
-      game = { solo: true, score: 0, played: 0, goes: targetScore };
+      game = { solo: true, score: 0, played: 0, goes: targetScore, deck: deckChoice };
     } else {
-      game = { players: names.slice(0, playerCount).map(n => ({ name: n, score: 0 })), target: targetScore, turn: 0 };
+      game = { players: names.slice(0, playerCount).map(n => ({ name: n, score: 0 })), target: targetScore, turn: 0, deck: deckChoice };
     }
     saveGame();
-    buildDeck();
+    startWithDeck(deckChoice);
   }
+
+  /* ---------- deck toggle (setup) ---------- */
+  deckRow.addEventListener('click', function(e){
+    const b = e.target.closest('.dchip'); if (!b) return;
+    e.stopPropagation();
+    deckChoice = b.dataset.deck;
+    deckRow.querySelectorAll('.dchip').forEach(x => x.classList.toggle('active', x === b));
+  });
 
   /* ---------- decade chips (setup) ---------- */
   function syncDecadeChips(){
@@ -993,7 +1035,7 @@
   resumeBtn.addEventListener('click', function(e){
     e.stopPropagation();
     const g = loadGame(); if (!g) { show('setup'); renderSetup(); return; }
-    game = g; buildDeck();
+    game = g; deckChoice = g.deck || 'ones'; startWithDeck(deckChoice);
   });
 
   // setup screen
@@ -1015,7 +1057,7 @@
     e.stopPropagation();
     game = null; clearGame();
     practicePlays = 1;          // first song is go #1
-    buildDeck();
+    startWithDeck(deckChoice);
   });
 
   // practice gate (free practice limit reached)
@@ -1041,16 +1083,14 @@
 
   /* ---------- boot ---------- */
   show('msg');
-  fetch('songs.json')
-    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(data => {
-      ALL = data.filter(s => s.dz || s.itunes);   // only songs with a playable preview source
-      if (!ALL.length){ msgText.textContent = "songs.json has no playable songs yet."; return; }
+  loadDeckData('ones')
+    .then(arr => {
+      if (!arr.length){ msgText.textContent = "songs.json has no playable songs yet."; return; }
       loadNames();
       if (loadGame()) resumeBtn.classList.remove('hidden');
       show('start');
     })
-    .catch(() => { msgText.textContent = "Couldn't load songs.json."; });
+    .catch(() => { msgText.textContent = "Couldn't load songs."; });
   </script>
 </body>
 </html>
