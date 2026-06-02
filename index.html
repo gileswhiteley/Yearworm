@@ -177,11 +177,11 @@
 
   .count-row button.locked { opacity: .4; }
 
-  /* ---- solo block on the setup screen ---- */
-  .solo-divider { display: flex; align-items: center; gap: 12px; margin: 26px 0 18px; color: #6b748a; font-size: .95rem; }
-  .solo-divider::before, .solo-divider::after { content: ""; flex: 1; height: 1px; background: #283042; }
-  .solo-block { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .solo-block .count-row.locked button { opacity: .3; pointer-events: none; }
+  /* ---- practice gate (free practice limit) ---- */
+  #gateView { display: flex; flex-direction: column; align-items: center; }
+  .gate-icon { font-size: clamp(3rem, 16vw, 4.6rem); line-height: 1; margin-bottom: 14px; }
+  .gate-title { font-size: clamp(1.8rem, 8vw, 2.6rem); font-weight: 900; letter-spacing: -1px; }
+  .gate-sub { margin-top: 14px; color: #aeb6c6; font-size: 1.1rem; line-height: 1.5; }
 
   /* ---- post-turn score toast (big, exciting, own background) ---- */
   .toast { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(6,8,12,.72); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
@@ -301,24 +301,13 @@
       <div class="lock-note" id="decadeLock">&#x2726; Picking eras is a Tier&nbsp;1 unlock &mdash; free for now</div>
 
       <div class="target-row">
-        <span>First to</span>
-        <input id="targetInput" class="target-input" type="number" inputmode="numeric" min="1" max="999" value="10" aria-label="Target score to win" />
-        <span>wins</span>
+        <span id="targetPre">First to</span>
+        <input id="targetInput" class="target-input" type="number" inputmode="numeric" min="1" max="999" value="10" aria-label="Target score / number of goes" />
+        <span id="targetPost">wins</span>
       </div>
       <button class="start-btn" id="beginBtn">Start game</button>
 
-      <div class="solo-divider"><span>or go it alone</span></div>
-      <div class="solo-block">
-        <div class="setup-section-label">Solo — how many goes?</div>
-        <div class="count-row" id="soloGoesRow">
-          <button id="gMinus" aria-label="Fewer goes">&minus;</button>
-          <span id="gCount">10</span>
-          <button id="gPlus" aria-label="More goes">+</button>
-          <span class="count-label">goes</span>
-        </div>
-        <div class="lock-note" id="soloLock">&#x2726; More than 10 goes is a paid unlock &mdash; free for now</div>
-        <button class="pill-btn" id="practiseBtn">Play solo</button>
-      </div>
+      <button class="pill-btn" id="practiseBtn">Just practising — play solo</button>
     </div>
 
     <!-- Winner screen -->
@@ -330,6 +319,15 @@
       <div class="winner-board score-squares" id="winBoard"></div>
       <button class="start-btn" id="playAgain">Play again</button>
       <button class="link-btn" id="newGame">New game</button>
+    </div>
+
+    <!-- Practice gate (free practice limit reached) -->
+    <div id="gateView" class="hidden">
+      <div class="gate-icon">&#x1F512;</div>
+      <div class="gate-title">That&rsquo;s your free round!</div>
+      <div class="gate-sub" id="gateSub">You&rsquo;ve had your practice goes.<br>Sign up to keep playing &mdash; coming soon.</div>
+      <button class="start-btn" id="gateSignup">Sign up</button>
+      <button class="link-btn" id="gateBack">Back to start</button>
     </div>
   </div>
 
@@ -353,9 +351,11 @@
          Yes = +1, No = nothing -> next player, next song.
        • First to the target score wins.
        • Scores persist in localStorage so a refresh won't wipe them.
-     SOLO (one player): game = { solo:true, score, played, goes }.
-       Fixed number of goes (10 free, more in ALPHA/paid), self-adjudicated
-       per go, end screen shows "X / N". game = null -> no game in progress.
+     SOLO (set the player counter to 1): game = { solo:true, score, played, goes }.
+       The "First to N wins" box becomes "Play N songs" — you play N goes,
+       self-adjudicated, and the end screen shows "X / N".
+     PRACTICE: the "Just practising" button -> game = null, an unscored romp
+       through songs; the free tier stops after PRACTICE_LIMIT (10) with a gate.
 
      SINGLE-DEVICE: the app now leans into one device (phone/tablet/PC) — the
      Solo/QR toggle is removed from the UI. The QR code + renderQR()/spotifyUrl()
@@ -365,7 +365,7 @@
      FREE-TIER GATES (prototype — see ROADMAP):
        • >2 players  -> Tier 1 unlock (setup caps free at 2, shows a lock note).
        • picking eras -> Tier 1 unlock (selectable now, free; note shown).
-       • solo goes    -> free locks at SOLO_FREE_GOES (10); paid unlocks more.
+       • practice    -> free stops after PRACTICE_LIMIT (10), then a sign-up gate.
 
      DEV NOTE (TODO): this layout is tuned for phones (where it'll mostly
      be used). On a desktop/Mac it looks lost in the middle of a big screen.
@@ -381,14 +381,12 @@
   // setup scratch state
   let playerCount = 2, targetScore = 10, names = ['Player 1', 'Player 2'];
   let selDecades = new Set();        // empty = all years
-  let soloGoes = 10;                 // chosen number of goes for a solo game
-  const MINP = 2, MAXP = 8;
+  let practicePlays = 0;             // songs played in the unscored practice mode
+  const MINP = 1, MAXP = 8;          // 1 player = scored solo (score out of N goes)
   const ALPHA = true;               // Alpha build: paid gates unlocked for testing
   const FREE_PLAYERS = 2;           // free tier would cap at 2 players (more = Tier 1)
   const PLAYER_CAP = ALPHA ? MAXP : FREE_PLAYERS;   // Alpha unlocks the full house
-  const SOLO_FREE_GOES = 10;        // free solo is exactly 10 goes
-  const SOLO_MIN = 3, SOLO_MAX = 30;
-  const GOES_CAP = ALPHA ? SOLO_MAX : SOLO_FREE_GOES;   // paid unlocks more than 10 goes
+  const PRACTICE_LIMIT = 10;        // free practice goes before the sign-up gate
 
   // how many score squares per row, so 4+ players wrap to a second line
   function colsFor(n){
@@ -438,9 +436,9 @@
   const winBoard   = document.getElementById('winBoard');
   const winKicker  = document.getElementById('winKicker');
   const trophy     = document.getElementById('trophy');
-  const soloGoesRow = document.getElementById('soloGoesRow');
-  const gCount     = document.getElementById('gCount');
-  const soloLock   = document.getElementById('soloLock');
+  const gateView   = document.getElementById('gateView');
+  const targetPre  = document.getElementById('targetPre');
+  const targetPost = document.getElementById('targetPost');
   const targetInput = document.getElementById('targetInput');
   const toast      = document.getElementById('toast');
   const toastCard  = toast.querySelector('.toast-card');
@@ -621,6 +619,7 @@
     startView.classList.toggle('hidden', view !== 'start');
     setupView.classList.toggle('hidden', view !== 'setup');
     winnerView.classList.toggle('hidden', view !== 'winner');
+    gateView.classList.toggle('hidden', view !== 'gate');
     const chrome = (view === 'play' || view === 'year' || view === 'msg');
     bar.classList.toggle('hidden', !chrome);
     const inPlay = (view === 'play' || view === 'year');
@@ -629,7 +628,7 @@
     // Restart is the quit option on every in-game page (scored OR practice)
     startOver.classList.toggle('hidden', !inPlay);
     countEl.classList.toggle('hidden', !!game);                // practice shows the deck position
-    if (view === 'start' || view === 'setup') setAccent(DEFAULT_ACCENT);
+    if (view === 'start' || view === 'setup' || view === 'gate') setAccent(DEFAULT_ACCENT);
   }
 
   function squareHtml(p, i, active){
@@ -721,6 +720,20 @@
     for (const d of selDecades){ if (s.year >= d && s.year < d + 10) return true; }
     return false;
   }
+  /* ---------- practice (free, unscored) ---------- */
+  function practiceAdvance(){
+    // a "go" = a song the practising player has seen; gate after the free limit
+    if (practicePlays >= PRACTICE_LIMIT){ showGate(); return; }
+    practicePlays++;
+    nextSong();
+  }
+  function showGate(){
+    stopPlayer();
+    document.getElementById('gateSub').innerHTML =
+      "You&rsquo;ve had your " + PRACTICE_LIMIT + " free goes.<br>Sign up to keep playing &mdash; coming soon.";
+    show('gate');
+  }
+
   function buildDeck(){
     deck = ALL.filter(inSelectedDecades);
     spacedShuffle(deck, 5);
@@ -735,6 +748,8 @@
   }
 
   /* ---------- scoring ---------- */
+  function saveNames(){ try { localStorage.setItem('yw_names', JSON.stringify(names)); } catch(e){} }
+  function loadNames(){ try { const s = localStorage.getItem('yw_names'); const a = s && JSON.parse(s); if (Array.isArray(a) && a.length) names = a.map(String); } catch(e){} }
   function saveGame(){ try { if (game) localStorage.setItem('yw_game', JSON.stringify(game)); } catch(e){} }
   function clearGame(){ try { localStorage.removeItem('yw_game'); } catch(e){} }
   function loadGame(){
@@ -895,30 +910,30 @@
       tintInput(inp, i);
     }
     pCount.textContent = playerCount;
+    applyPlayerMode();
   }
   function clampTarget(n){ return Math.max(1, Math.min(999, Math.round(n) || 10)); }
-  function renderSolo(){
-    soloGoes = Math.max(SOLO_MIN, Math.min(GOES_CAP, soloGoes || SOLO_FREE_GOES));
-    gCount.textContent = soloGoes;
-    soloGoesRow.classList.toggle('locked', !ALPHA);   // free tier: goes locked at 10
-    soloLock.classList.toggle('hidden', ALPHA);       // hide the lock note once unlocked
+  // 1 player = scored solo: name field still shows (defaults "Player 1"); "First to N wins" -> "Play N songs"
+  function applyPlayerMode(){
+    const solo = playerCount === 1;
+    targetPre.textContent  = solo ? 'Play' : 'First to';
+    targetPost.textContent = solo ? 'songs' : 'wins';
   }
   function renderSetup(){
     renderNames();
     targetInput.value = targetScore;
     syncDecadeChips();
     playerLock.classList.add('hidden');
-    renderSolo();
   }
-  function startScoringGame(){
-    readNames();
+  function startGame(){
     targetScore = clampTarget(+targetInput.value);
-    game = { players: names.slice(0, playerCount).map(n => ({ name: n, score: 0 })), target: targetScore, turn: 0 };
-    saveGame();
-    buildDeck();
-  }
-  function startSoloGame(){
-    game = { solo: true, score: 0, played: 0, goes: ALPHA ? soloGoes : SOLO_FREE_GOES };
+    readNames();
+    saveNames();
+    if (playerCount === 1){
+      game = { solo: true, score: 0, played: 0, goes: targetScore };
+    } else {
+      game = { players: names.slice(0, playerCount).map(n => ({ name: n, score: 0 })), target: targetScore, turn: 0 };
+    }
     saveGame();
     buildDeck();
   }
@@ -950,7 +965,10 @@
 
   document.getElementById('stage').addEventListener('click', function(){
     if (!deck.length) return;
-    if (showingYear) return;       // adjudicate via Got it / Missed buttons
+    if (showingYear){
+      if (game) return;          // scored game: must tap Got it / Missed
+      practiceAdvance(); return; // practice: tap to advance (counts toward the free limit)
+    }
     if (mode === 'qr') showYear(); // (legacy 2-device) reveals via the button only
   });
 
@@ -989,16 +1007,22 @@
   });
   targetInput.addEventListener('input', function(){ targetScore = clampTarget(+targetInput.value); });
   targetInput.addEventListener('blur', function(){ targetInput.value = targetScore; });
-  document.getElementById('beginBtn').addEventListener('click', function(e){ e.stopPropagation(); startScoringGame(); });
-  // solo goes stepper (free tier locked at 10; ALPHA/paid can choose)
-  document.getElementById('gMinus').addEventListener('click', function(){
-    if (ALPHA && soloGoes > SOLO_MIN){ soloGoes--; renderSolo(); }
-  });
-  document.getElementById('gPlus').addEventListener('click', function(){
-    if (ALPHA && soloGoes < GOES_CAP){ soloGoes++; renderSolo(); }
-  });
+  document.getElementById('beginBtn').addEventListener('click', function(e){ e.stopPropagation(); startGame(); });
   document.getElementById('practiseBtn').addEventListener('click', function(e){
-    e.stopPropagation(); startSoloGame();
+    e.stopPropagation();
+    game = null; clearGame();
+    practicePlays = 1;          // first song is go #1
+    buildDeck();
+  });
+
+  // practice gate (free practice limit reached)
+  document.getElementById('gateSignup').addEventListener('click', function(e){
+    e.stopPropagation();
+    // No accounts yet — sign-up is a roadmap item; for now bounce to start.
+    show('start');
+  });
+  document.getElementById('gateBack').addEventListener('click', function(e){
+    e.stopPropagation(); show('start');
   });
 
   // winner screen
@@ -1021,6 +1045,7 @@
       if (!ALL.length){ msgText.textContent = "songs.json has no playable songs yet."; return; }
       startSub.innerHTML = ALL.length.toLocaleString() + " songs · UK #1 singles<br>"
         + "<span style='opacity:.7'>Hear a snippet, guess the year · pass-and-play scoring</span>";
+      loadNames();
       if (loadGame()) resumeBtn.classList.remove('hidden');
       show('start');
     })
