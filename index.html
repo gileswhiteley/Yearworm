@@ -475,23 +475,42 @@
   function artistKey(s){
     return (s.artist || "").toLowerCase().split(/\s+(?:feat\.?|ft\.?|featuring|with|&|x|and)\s+|,/)[0].trim();
   }
+  // Shuffle the deck but keep the same artist at least `gap` cards apart.
+  // IMPORTANT: among artists that are clear of the gap we pick at RANDOM, weighted
+  // by how many songs they still have — so prolific artists drain steadily and stay
+  // spread across the whole deck. The old code took the BIGGEST bucket every time,
+  // which jammed Elvis/Abba into the opening and sank small modern catalogues to the
+  // bottom, making the deck feel stuck in the 50s/60s. Weighting keeps every era's
+  // share even AND preserves the spacing (no same-artist clumps at the tail).
   function spacedShuffle(a, gap){
     shuffle(a);
     const buckets = new Map();
     for (const s of a){ const k = artistKey(s); if (!buckets.has(k)) buckets.set(k, []); buckets.get(k).push(s); }
+    const keys = [...buckets.keys()];
     const lastIdx = new Map();
     const out = [];
     for (let i = 0; i < a.length; i++){
-      let best = null, bestCount = -1;
-      for (const [k, items] of buckets){
-        if (!items.length) continue;
+      const eligible = [];
+      let total = 0;
+      for (const k of keys){
+        const n = buckets.get(k).length;
+        if (!n) continue;
         const li = lastIdx.has(k) ? lastIdx.get(k) : -Infinity;
-        const eligible = i - li > gap;
-        const rank = (eligible ? 1e6 : 0) + items.length;
-        if (rank > bestCount){ best = k; bestCount = rank; }
+        if (i - li > gap){ eligible.push(k); total += n; }
       }
-      out.push(buckets.get(best).pop());
-      lastIdx.set(best, i);
+      let pick;
+      if (eligible.length){
+        let r = Math.random() * total;                 // weighted by remaining songs
+        for (const k of eligible){ r -= buckets.get(k).length; if (r <= 0){ pick = k; break; } }
+        if (pick == null) pick = eligible[eligible.length - 1];
+      } else {
+        // nothing clear of the gap — relieve pressure by draining the fullest bucket
+        let best = null, bc = -1;
+        for (const k of keys){ const n = buckets.get(k).length; if (n > bc){ bc = n; best = k; } }
+        pick = best;
+      }
+      out.push(buckets.get(pick).pop());
+      lastIdx.set(pick, i);
     }
     for (let i = 0; i < a.length; i++) a[i] = out[i];
     return a;
