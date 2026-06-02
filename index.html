@@ -313,6 +313,12 @@
       </div>
       <div class="lock-note" id="decadeLock">&#x2726; Picking eras is a Tier&nbsp;1 unlock &mdash; free for now</div>
 
+      <div class="setup-section-label">Difficulty</div>
+      <div class="deck-row" id="diffRow">
+        <button class="dchip" data-diff="easy">Easy (big hits)</button>
+        <button class="dchip active" data-diff="all">All tracks</button>
+      </div>
+
       <div class="target-row">
         <span id="targetPre">First to</span>
         <input id="targetInput" class="target-input" type="number" inputmode="numeric" min="1" max="999" value="10" aria-label="Target score / number of goes" />
@@ -390,6 +396,9 @@
   let deckChoice = 'ones';
   const DECK_FILES = { ones: 'songs.json', tens: 'songs.toptens.json' };
   const deckCache = {};   // choice -> filtered (playable-only) array, fetched once
+  // difficulty: 'all' = every track in the pool, 'easy' = the best-known ~10/year (by popularity)
+  let difficulty = 'all';
+  const EASY_PER_YEAR = 10;
   // Single-device by default. QR kept in code for possible resurrection, not surfaced.
   let mode = 'snippet';
 
@@ -429,6 +438,7 @@
   const songArtist = document.getElementById('songArtist');
   const countEl    = document.getElementById('count');
   const decadeRow  = document.getElementById('decadeRow');
+  const diffRow    = document.getElementById('diffRow');
   const deckRow    = document.getElementById('deckRow');
   const playerLock = document.getElementById('playerLock');
   const bar        = document.getElementById('bar');
@@ -769,8 +779,21 @@
       .catch(() => { msgText.textContent = "Couldn't load songs."; });
   }
 
+  // Easy = the best-known ~EASY_PER_YEAR songs per year (highest Deezer popularity).
+  function easyFilter(songs){
+    const byYear = {};
+    for (const s of songs){ (byYear[s.year] = byYear[s.year] || []).push(s); }
+    const keep = new Set();
+    for (const yr in byYear){
+      byYear[yr].sort((a, b) => (b.pop || 0) - (a.pop || 0));
+      for (const s of byYear[yr].slice(0, EASY_PER_YEAR)) keep.add(s);
+    }
+    return songs.filter(s => keep.has(s));
+  }
+
   function buildDeck(){
     deck = ALL.filter(inSelectedDecades);
+    if (difficulty === 'easy') deck = easyFilter(deck);
     spacedShuffle(deck, 5);
     pos = 0;
     if (!deck.length){
@@ -959,6 +982,7 @@
     targetInput.value = targetScore;
     syncDecadeChips();
     deckRow.querySelectorAll('.dchip').forEach(x => x.classList.toggle('active', x.dataset.deck === deckChoice));
+    diffRow.querySelectorAll('.dchip').forEach(x => x.classList.toggle('active', x.dataset.diff === difficulty));
     playerLock.classList.add('hidden');
   }
   function startGame(){
@@ -966,9 +990,9 @@
     readNames();
     saveNames();
     if (playerCount === 1){
-      game = { solo: true, score: 0, played: 0, goes: targetScore, deck: deckChoice };
+      game = { solo: true, score: 0, played: 0, goes: targetScore, deck: deckChoice, diff: difficulty };
     } else {
-      game = { players: names.slice(0, playerCount).map(n => ({ name: n, score: 0 })), target: targetScore, turn: 0, deck: deckChoice };
+      game = { players: names.slice(0, playerCount).map(n => ({ name: n, score: 0 })), target: targetScore, turn: 0, deck: deckChoice, diff: difficulty };
     }
     saveGame();
     startWithDeck(deckChoice);
@@ -980,6 +1004,14 @@
     e.stopPropagation();
     deckChoice = b.dataset.deck;
     deckRow.querySelectorAll('.dchip').forEach(x => x.classList.toggle('active', x === b));
+  });
+
+  /* ---------- difficulty toggle (setup) ---------- */
+  diffRow.addEventListener('click', function(e){
+    const b = e.target.closest('.dchip'); if (!b) return;
+    e.stopPropagation();
+    difficulty = b.dataset.diff;
+    diffRow.querySelectorAll('.dchip').forEach(x => x.classList.toggle('active', x === b));
   });
 
   /* ---------- decade chips (setup) ---------- */
@@ -1035,7 +1067,7 @@
   resumeBtn.addEventListener('click', function(e){
     e.stopPropagation();
     const g = loadGame(); if (!g) { show('setup'); renderSetup(); return; }
-    game = g; deckChoice = g.deck || 'ones'; startWithDeck(deckChoice);
+    game = g; deckChoice = g.deck || 'ones'; difficulty = g.diff || 'all'; startWithDeck(deckChoice);
   });
 
   // setup screen
