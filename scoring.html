@@ -78,8 +78,8 @@
   .snippet-meta { margin-top: 26px; min-height: 1.2em; color: #aeb6c6; font-size: 1.05rem; }
   .snippet-meta b { color: var(--accent); }
 
-  .reveal-btn { margin-top: 34px; background: #1b2230; color: #cdd6e8; border: 0; border-radius: 999px; padding: 14px 32px; font-size: 1.05rem; font-weight: 700; transition: opacity .2s; }
-  .reveal-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .reveal-btn { margin-top: 34px; background: var(--accent); color: #0a0e14; border: 0; border-radius: 999px; padding: 14px 32px; font-size: 1.05rem; font-weight: 700; box-shadow: 0 12px 30px -10px var(--accent); transition: background .25s, color .25s, box-shadow .25s, opacity .25s; }
+  .reveal-btn:disabled { background: #1b2230; color: #cdd6e8; box-shadow: none; opacity: .55; cursor: not-allowed; }
 
   /* ---- Year side ---- */
   .year {
